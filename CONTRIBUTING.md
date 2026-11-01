@@ -4,7 +4,7 @@ Guia de trabalho do grupo do Desa Pego. Os requisitos e critérios de aceitaçã
 
 ## Fluxo de trabalho
 
-1. Pegue sua issue no [quadro do projeto](https://github.com/users/Mariaclara2424/projects/2) e mova para **In Progress**.
+1. Pegue sua issue no [quadro do projeto](https://github.com/users/mariaclarapma/projects/2) e mova para **In Progress**.
 2. Trabalhe na branch do requisito, no padrão `feature/<numero>-<slug>`:
    ```bash
    git checkout feature/001-cadastro-login

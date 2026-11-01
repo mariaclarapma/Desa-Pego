@@ -5,7 +5,7 @@
 **Brechó online comunitário: qualquer pessoa anuncia as peças paradas no armário, vê quanto vai receber pela venda e o comprador paga com Pix.**
 
 ![Status](https://img.shields.io/badge/status-em%20desenvolvimento-F2A900)
-[![CI](https://github.com/Mariaclara2424/Desa-Pego/actions/workflows/ci.yml/badge.svg)](https://github.com/Mariaclara2424/Desa-Pego/actions/workflows/ci.yml)
+[![CI](https://github.com/mariaclarapma/Desa-Pego/actions/workflows/ci.yml/badge.svg)](https://github.com/mariaclarapma/Desa-Pego/actions/workflows/ci.yml)
 ![TypeScript](https://img.shields.io/badge/TypeScript-5-3178C6?logo=typescript&logoColor=white)
 ![NestJS](https://img.shields.io/badge/NestJS-backend-E0234E?logo=nestjs&logoColor=white)
 ![Next.js](https://img.shields.io/badge/Next.js-frontend-000000?logo=nextdotjs&logoColor=white)
@@ -13,13 +13,13 @@
 ![Redis](https://img.shields.io/badge/Redis-7-DC382D?logo=redis&logoColor=white)
 ![Pix](https://img.shields.io/badge/pagamento-Pix-32BCAD)
 
-[Requisitos](REQUISITOS.md) · [Arquitetura](docs/ARQUITETURA.md) · [Issues](https://github.com/Mariaclara2424/Desa-Pego/issues) · [Quadro do projeto](https://github.com/users/Mariaclara2424/projects/2) · [Como contribuir](CONTRIBUTING.md)
+[Requisitos](REQUISITOS.md) · [Arquitetura](docs/ARQUITETURA.md) · [Issues](https://github.com/mariaclarapma/Desa-Pego/issues) · [Quadro do projeto](https://github.com/users/mariaclarapma/projects/2) · [Como contribuir](CONTRIBUTING.md)
 
 </div>
 
 ---
 
-> **Projeto em andamento.** O planejamento, a arquitetura e a esteira de CI já estão prontos; os módulos estão sendo desenvolvidos agora. Acompanhe o progresso pelas [issues](https://github.com/Mariaclara2424/Desa-Pego/issues) e pelo [quadro do projeto](https://github.com/users/Mariaclara2424/projects/2).
+> **Projeto em andamento.** O planejamento, a arquitetura e a esteira de CI já estão prontos; os módulos estão sendo desenvolvidos agora. Acompanhe o progresso pelas [issues](https://github.com/mariaclarapma/Desa-Pego/issues) e pelo [quadro do projeto](https://github.com/users/mariaclarapma/projects/2).
 
 ## Sobre o projeto
 
@@ -235,6 +235,6 @@ Depois da primeira entrega, a arquitetura já prevê o encaixe de:
 | **Lívia Morais** | [@livmoorais](https://github.com/livmoorais) |
 | **Helena Furtado** | [@helenafurtadoo](https://github.com/helenafurtadoo) |
 | **Marina Almeida** | [@Marinasz05](https://github.com/Marinasz05) |
-| **Maria Clara Pedrosa** | [@Mariaclara2424](https://github.com/Mariaclara2424) |
+| **Maria Clara Pedrosa** | [@mariaclarapma](https://github.com/mariaclarapma) |
 
 Projeto acadêmico desenvolvido no curso de Ciência da Computação do **CEUB – Centro Universitário de Brasília**.
