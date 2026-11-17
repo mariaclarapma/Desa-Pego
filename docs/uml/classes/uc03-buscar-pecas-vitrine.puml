@@ -1,0 +1,89 @@
+@startuml
+!include ../_estilo.iuml
+set separator none
+title UC03 · Buscar peças na vitrine e consultar detalhes — Diagrama de classes\n<size:11>Requisitos 007 e 008 · Módulo 03 (Catálogo e Detalhes da Peça)</size>
+hide empty members
+
+package "Módulo 03 · Catálogo" {
+  class CatalogoController {
+    + listar(filtro: FiltroBusca): Pagina
+    + detalhar(anuncioId: UUID): DetalhesPeca
+  }
+
+  class CatalogoService {
+    + listar(filtro: FiltroBusca): Pagina
+    + detalhar(anuncioId: UUID): DetalhesPeca
+  }
+
+  class FiltroBusca {
+    + texto: string [0..1]
+    + categoria: string [0..1]
+    + tamanho: string [0..1]
+    + condicao: Condicao [0..1]
+    + precoMinCentavos: int [0..1]
+    + precoMaxCentavos: int [0..1]
+    + ordenacao: Ordenacao
+    + pagina: int
+  }
+
+  enum Ordenacao {
+    MAIS_RECENTES
+    MENOR_PRECO
+    MAIOR_PRECO
+  }
+
+  class DetalhesPeca {
+    + anuncio: Anuncio
+    + nomePublicoVendedor: string
+    + cidadeVendedor: string
+    + podeComprar(): boolean
+  }
+}
+
+package "app/core" {
+  interface AnunciosPort {
+    + buscarAtivos(filtro: FiltroBusca): Pagina
+    + buscarPorId(anuncioId: UUID): Anuncio [0..1]
+  }
+  interface ContasPort {
+    + obterPerfilPublico(usuarioId: UUID): PerfilPublico
+  }
+}
+
+class Anuncio <<Módulo 02>> {
+  - id: UUID
+  - titulo: string
+  - descricao: string
+  - tamanho: string
+  - marca: string [0..1]
+  - condicao: Condicao
+  - precoCentavos: int
+  - status: StatusAnuncio
+  - fotos: string [1..5]
+}
+
+CatalogoController --> "1" CatalogoService
+CatalogoService --> "1" AnunciosPort
+CatalogoService --> "1" ContasPort
+CatalogoService ..> FiltroBusca : usa
+CatalogoService ..> DetalhesPeca : cria
+FiltroBusca --> "1" Ordenacao
+DetalhesPeca --> "1" Anuncio
+AnunciosPort ..> Anuncio
+
+note as N1
+  A vitrine lista só peças DISPONIVEL
+  (sem pausadas, ocultas ou vendidas).
+  A busca usa o full-text do PostgreSQL,
+  sem diferenciar acentos e maiúsculas.
+end note
+N1 .. AnunciosPort
+
+note as N2
+  podeComprar() é falso quando a peça
+  está RESERVADA ou VENDIDA. O status
+  é lido do banco, não do cache.
+  CPF do vendedor nunca é exibido.
+end note
+N2 .. DetalhesPeca
+@enduml

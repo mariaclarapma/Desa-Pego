@@ -1,0 +1,45 @@
+@startuml
+!include ../_estilo.iuml
+title UC05 · Processar confirmação do pagamento Pix (webhook) — Diagrama de sequência\n<size:11>Requisitos 011 e 014 · Módulos 04 (Pix) e 05 (Pedidos e Carteira)</size>
+autonumber
+hide footbox
+
+actor "Mercado Pago" as MP
+participant ":WebhookPixController" as C
+participant ":PagamentoService" as S
+queue "Fila\n(BullMQ)" as Q
+participant "Módulo 05\n(PedidosPort)" as PED
+participant "Módulo 03\n(CatalogoPort)" as CAT
+participant "Módulo 05\n(CarteiraPort)" as CART
+database "Banco de dados" as DB
+
+== Recebimento da notificação ==
+MP -> C : notificação de pagamento (webhook)
+C -> S : registrarEvento(cabecalhos, corpo)
+S -> S : valida a assinatura\n(PagamentoProvider)
+alt assinatura inválida
+  S --> C : recusado
+  C --> MP : 401 (evento descartado)
+else evento repetido
+  S -> DB : procura idEventoExterno
+  DB --> S : já existe
+  S --> C : ignorado
+  C --> MP : 200 (nada muda)
+else evento novo
+  S -> DB : salva EventoWebhook
+  S -> Q : coloca o evento na fila
+  C --> MP : 200 (recebido)
+end
+
+== Processamento do pagamento ==
+Q -> S : processarPagamento(eventoId)
+note over S, DB : tudo abaixo acontece numa única transação do banco
+S -> DB : CobrancaPix PENDENTE → PAGA
+S -> PED : marcarComoPago(pedidoId)
+note right of PED : AGUARDANDO_PAGAMENTO → PAGO
+S -> CAT : marcarComoVendida(anuncioId)
+note right of CAT : RESERVADO → VENDIDO
+S -> CART : registrarVenda(pedidoId)
+CART -> DB : cria lançamentos VENDA (PENDENTE),\nCOMISSAO e TAXA_PIX
+S -> DB : marca o evento como processado
+@enduml

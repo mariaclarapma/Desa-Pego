@@ -1,0 +1,48 @@
+@startuml
+!include ../_estilo.iuml
+title UC03 · Buscar peças na vitrine e consultar detalhes — Diagrama de sequência\n<size:11>Requisitos 007 e 008 · Módulo 03 (Catálogo e Detalhes da Peça)</size>
+autonumber
+hide footbox
+
+actor Comprador
+participant "Frontend" as FE
+participant ":CatalogoController" as C
+participant ":CatalogoService" as S
+participant "Módulo 02\n(AnunciosPort)" as M2
+participant "Módulo 01\n(ContasPort)" as M1
+
+== Busca na vitrine ==
+Comprador -> FE : digita a busca e escolhe filtros
+FE -> C : listar(filtro)
+C -> S : listar(filtro)
+S -> M2 : buscarAtivos(filtro)
+M2 --> S : página de peças
+S --> FE : página de peças
+FE --> Comprador : mostra foto, título, tamanho, preço e condição
+opt muda filtros, ordenação ou página
+  Comprador -> FE : altera a busca
+  FE -> C : listar(novoFiltro)
+  C --> FE : nova página de peças
+end
+
+== Detalhes da peça ==
+Comprador -> FE : abre uma peça
+FE -> C : detalhar(anuncioId)
+C -> S : detalhar(anuncioId)
+S -> M2 : buscarPorId(anuncioId)
+alt peça não existe ou foi ocultada
+  M2 --> S : nenhum anúncio
+  S --> FE : peça não encontrada
+  FE --> Comprador : página de erro amigável
+else peça encontrada
+  M2 --> S : anúncio (status lido do banco)
+  S -> M1 : obterPerfilPublico(vendedorId)
+  M1 --> S : nome público e cidade
+  S --> FE : detalhes da peça
+  alt peça disponível
+    FE --> Comprador : galeria, dados e botão "Comprar"
+  else peça reservada ou vendida
+    FE --> Comprador : galeria, dados e compra desabilitada
+  end
+end
+@enduml

@@ -1,0 +1,51 @@
+@startuml
+!include ../_estilo.iuml
+title UC02 · Publicar anúncio com simulação de ganho — Diagrama de sequência\n<size:11>Requisitos 004 e 005 (e regra do 002) · Módulo 02 (Anúncios e Simulador)</size>
+autonumber
+hide footbox
+
+actor Vendedor
+participant "Frontend" as FE
+participant ":AnuncioController" as C
+participant ":AnuncioService" as S
+participant "Módulo 01\n(ContasPort)" as M1
+participant "Módulo 05\n(ConfiguracaoPort)" as M5
+participant "Amazon S3" as S3
+database "Banco de dados" as DB
+
+== Simulação de ganho ==
+Vendedor -> FE : escolhe categoria e condição
+FE -> C : obterParametrosSimulacao(categoria, condicao)
+C -> S : obterParametrosSimulacao(categoria, condicao)
+S -> M5 : obterComissaoETaxaPix()
+S -> M5 : obterFaixaSugerida(categoria, condicao)
+S --> FE : comissão, taxa Pix e faixa sugerida
+loop a cada alteração do preço
+  Vendedor -> FE : digita o preço
+  FE -> FE : CalculadoraPreco.calcular(preco, comissao, taxaPix)
+  FE --> Vendedor : mostra comissão, taxa e valor líquido
+end
+note right of FE : o cálculo roda no navegador,\nsem chamar a API
+
+== Fotos ==
+Vendedor -> FE : escolhe de 1 a 5 fotos
+FE -> C : gerarUrlsDeUpload(quantidade)
+C -> S : gerarUrlsDeUpload(quantidade)
+S --> FE : URLs pré-assinadas
+FE -> S3 : envia cada foto direto ao S3
+
+== Publicação ==
+Vendedor -> FE : clica em "Publicar"
+FE -> C : publicar(dados do anúncio)
+C -> S : publicar(vendedorId, dados)
+S -> M1 : possuiChavePix(vendedorId)
+alt vendedor sem chave Pix
+  S --> FE : erro "Cadastre sua chave Pix para anunciar"
+else dados ou fotos inválidos
+  S --> FE : erro indicando o campo
+else tudo certo
+  S -> DB : salva anúncio com status DISPONIVEL
+  S --> FE : anúncio publicado
+end
+FE --> Vendedor : mostra o resultado
+@enduml

@@ -1,0 +1,62 @@
+@startuml
+!include ../_estilo.iuml
+title UC04 · Reservar peça no checkout e gerar cobrança Pix — Diagrama de sequência\n<size:11>Requisitos 010 e 011 · Módulo 04 (Carrinho, Checkout e Pix)</size>
+autonumber
+hide footbox
+
+actor Comprador
+participant "Frontend" as FE
+participant ":CheckoutController" as C
+participant ":CheckoutService" as S
+participant "Módulo 03\n(CatalogoPort)" as M3
+participant "Módulo 05\n(PedidosPort)" as M5
+participant "Mercado Pago\n(PagamentoProvider)" as MP
+participant "ViaCEP" as CEP
+database "Banco de dados" as DB
+
+== Reserva das peças ==
+Comprador -> FE : clica em "Finalizar compra"
+FE -> C : iniciar(anuncioIds)
+C -> S : reservarPecas(compradorId, anuncioIds)
+loop para cada peça do carrinho
+  S -> M3 : reservarPeca(anuncioId)
+  note right of M3 : UPDATE atômico:\nsó reserva se estiver DISPONIVEL
+  break peça já reservada ou vendida
+    S -> M3 : libera as peças já reservadas nesta tentativa
+    S --> FE : erro "Peça indisponível"
+  end
+  S -> DB : salva Reserva (prazo padrão de 15 min)
+end
+S --> FE : resumo com peças, frete fixo, total e prazo
+FE --> Comprador : mostra o resumo
+
+== Endereço e pagamento ==
+Comprador -> FE : informa o CEP
+FE -> C : consulta o CEP
+C -> CEP : busca o endereço
+CEP --> C : rua, bairro, cidade e UF
+C --> FE : endereço preenchido
+Comprador -> FE : confirma endereço e pedido
+FE -> C : pagar(anuncioIds, endereco)
+C -> S : gerarCobranca(compradorId, endereco)
+alt reserva expirou
+  S --> FE : erro "Sua reserva expirou"
+else reserva ativa
+  S -> M5 : criarPedido(compradorId, anuncioIds, endereco)
+  note right of M5 : pedido AGUARDANDO_PAGAMENTO,\ncom a comissão vigente guardada
+  M5 --> S : pedidoId
+  S -> MP : criarCobranca(pedidoId, total, expiraEm)
+  MP --> S : QR Code e código copia-e-cola
+  S -> DB : salva CobrancaPix PENDENTE
+  S --> FE : QR Code, copia-e-cola e prazo
+  FE --> Comprador : mostra o Pix para pagar
+end
+
+== Se o prazo acabar sem pagamento ==
+S -> S : expirarReservas(reservaIds)\n(job agendado no fim do prazo)
+opt pagamento não foi confirmado
+  S -> M5 : cancelar(pedidoId)
+  S -> M3 : liberarPeca(anuncioId)
+  note right of M3 : a peça volta a\nficar DISPONIVEL
+end
+@enduml

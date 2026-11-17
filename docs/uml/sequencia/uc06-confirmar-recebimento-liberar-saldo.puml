@@ -1,0 +1,61 @@
+@startuml
+!include ../_estilo.iuml
+title UC06 · Atualizar entrega do pedido e liberar saldo — Diagrama de sequência\n<size:11>Requisitos 013 e 014 · Módulo 05 (Pedidos, Carteira e Administração)</size>
+autonumber
+hide footbox
+
+actor Vendedor
+actor Comprador
+participant "Frontend" as FE
+participant ":PedidoController" as C
+participant ":PedidoService" as S
+participant ":Pedido" as P
+participant ":CarteiraController" as CC
+participant ":CarteiraService" as CS
+database "Banco de dados" as DB
+
+== Vendedor envia a peça ==
+Vendedor -> FE : clica em "Marcar como enviado"
+FE -> C : marcarComoEnviado(pedidoId)
+C -> S : marcarComoEnviado(pedidoId, usuarioId)
+S -> DB : busca o pedido
+alt usuário não é o vendedor do pedido
+  S --> FE : erro "Acesso negado"
+else é o vendedor
+  S -> P : mudarStatus(ENVIADO)
+  alt status atual não é PAGO
+    P --> S : transição inválida
+    S --> FE : erro "Pedido ainda não foi pago"
+  else status atual é PAGO
+    S -> DB : salva pedido ENVIADO
+    S --> FE : pedido enviado
+  end
+end
+
+== Comprador confirma o recebimento ==
+Comprador -> FE : clica em "Confirmar recebimento"
+FE -> C : confirmarRecebimento(pedidoId)
+C -> S : confirmarRecebimento(pedidoId, usuarioId)
+S -> DB : busca o pedido
+alt usuário não é o comprador do pedido
+  S --> FE : erro "Acesso negado"
+else é o comprador
+  S -> P : mudarStatus(ENTREGUE)
+  alt status atual não é ENVIADO
+    S --> FE : erro "Transição inválida"
+  else status atual é ENVIADO
+    S -> DB : salva pedido ENTREGUE
+    S -> CS : liberarSaldo(pedidoId)
+    CS -> DB : cria lançamentos LIBERACAO\n(−valor PENDENTE, +valor DISPONIVEL)
+    S --> FE : recebimento confirmado
+  end
+end
+
+opt Vendedor consulta a carteira
+  Vendedor -> FE : abre a carteira
+  FE -> CC : consultarSaldo()
+  CC -> CS : consultarSaldo(vendedorId)
+  CS -> DB : soma os lançamentos por situação
+  CS --> FE : saldo pendente e disponível
+end
+@enduml

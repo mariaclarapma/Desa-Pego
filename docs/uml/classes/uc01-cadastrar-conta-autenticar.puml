@@ -1,0 +1,73 @@
+@startuml
+!include ../_estilo.iuml
+set separator none
+title UC01 · Cadastrar conta e autenticar-se — Diagrama de classes\n<size:11>Requisito 001 · Módulo 01 (Contas e Perfil)</size>
+hide empty members
+
+class AuthController {
+  + cadastrar(nome: string, email: string, cpf: string, senha: string): Usuario
+  + login(email: string, senha: string): string
+  + logout(refreshToken: string): void
+}
+
+class AuthService {
+  + cadastrar(nome: string, email: string, cpf: string, senha: string): Usuario
+  + login(email: string, senha: string): string
+  + logout(refreshToken: string): void
+  - validarCpf(cpf: string): boolean
+  - registrarTentativaFalha(email: string): void
+}
+
+class Usuario {
+  - id: UUID
+  - nome: string
+  - email: string
+  - cpfHash: string
+  - cpfCriptografado: string
+  - senhaHash: string
+  - perfil: Perfil
+  - criadoEm: DateTime
+}
+
+enum Perfil {
+  USUARIO
+  ADMIN
+}
+
+class RefreshToken {
+  - id: UUID
+  - tokenHash: string
+  - expiraEm: DateTime
+  - revogado: boolean
+  + revogar(): void
+}
+
+AuthController --> "1" AuthService
+AuthService ..> Usuario : cria e consulta
+AuthService ..> RefreshToken : cria e revoga
+Usuario "1" -- "0..*" RefreshToken : possui
+Usuario --> "1" Perfil
+
+note as N1
+  Senha guardada com hash Argon2id.
+  CPF criptografado; o cpfHash permite
+  recusar CPF repetido sem descriptografar.
+  E-mail e cpfHash são únicos no banco.
+end note
+N1 .. Usuario
+
+note as N2
+  O login devolve um JWT de curta duração;
+  o refresh token vai num cookie httpOnly.
+  Muitas tentativas erradas bloqueiam o
+  login por um tempo (contador no Redis).
+end note
+N2 .. AuthService
+
+note as N3
+  Não existe perfil "vendedor": a conta
+  passa a vender quando cadastra uma
+  chave Pix (Req. 002).
+end note
+N3 .. Perfil
+@enduml

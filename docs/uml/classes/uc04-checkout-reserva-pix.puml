@@ -1,0 +1,123 @@
+@startuml
+!include ../_estilo.iuml
+set separator none
+title UC04 · Reservar peça no checkout e gerar cobrança Pix — Diagrama de classes\n<size:11>Requisitos 010 e 011 · Módulo 04 (Carrinho, Checkout e Pix)</size>
+hide empty members
+
+package "Frontend" {
+  class Carrinho {
+    - anuncioIds: UUID [0..*]
+    + adicionar(anuncioId: UUID): void
+    + remover(anuncioId: UUID): void
+  }
+}
+
+package "Módulo 04 · Checkout" {
+  class CheckoutController {
+    + iniciar(anuncioIds: UUID[]): ResumoCheckout
+    + pagar(anuncioIds: UUID[], endereco: Endereco): CobrancaPix
+  }
+
+  class CheckoutService {
+    + reservarPecas(compradorId: UUID, anuncioIds: UUID[]): Reserva[]
+    + gerarCobranca(compradorId: UUID, endereco: Endereco): CobrancaPix
+    + expirarReservas(reservaIds: UUID[]): void
+    - calcularTotal(precos: int[], freteCentavos: int): int
+  }
+
+  class Reserva {
+    - id: UUID
+    - anuncioId: UUID
+    - compradorId: UUID
+    - expiraEm: DateTime
+    - status: StatusReserva
+    + estaAtiva(): boolean
+  }
+
+  enum StatusReserva {
+    ATIVA
+    CONCLUIDA
+    EXPIRADA
+  }
+
+  class CobrancaPix {
+    - id: UUID
+    - pedidoId: UUID
+    - qrCode: string
+    - copiaECola: string
+    - valorCentavos: int
+    - expiraEm: DateTime
+    - status: StatusCobranca
+  }
+
+  enum StatusCobranca {
+    PENDENTE
+    PAGA
+    EXPIRADA
+  }
+
+  class Endereco {
+    - cep: string
+    - rua: string
+    - numero: string
+    - cidade: string
+    - uf: string
+  }
+}
+
+package "app/core" {
+  interface CatalogoPort {
+    + reservarPeca(anuncioId: UUID): boolean
+    + liberarPeca(anuncioId: UUID): void
+  }
+  interface PedidosPort {
+    + criarPedido(compradorId: UUID, anuncioIds: UUID[], endereco: Endereco): UUID
+    + cancelar(pedidoId: UUID): void
+  }
+  interface ConfiguracaoPort {
+    + obterFreteFixo(): int
+    + obterTempoReserva(): int
+  }
+  interface PagamentoProvider {
+    + criarCobranca(pedidoId: UUID, valorCentavos: int, expiraEm: DateTime): CobrancaPix
+  }
+}
+
+class MercadoPagoProvider
+class PixSimuladoProvider
+
+Carrinho ..> CheckoutController : finalizar compra
+CheckoutController --> "1" CheckoutService
+CheckoutService --> "1" CatalogoPort
+CheckoutService --> "1" PedidosPort
+CheckoutService --> "1" ConfiguracaoPort
+CheckoutService --> "1" PagamentoProvider
+CheckoutService ..> Reserva : cria
+CheckoutService ..> CobrancaPix : salva
+Reserva --> "1" StatusReserva
+CobrancaPix --> "1" StatusCobranca
+CheckoutService ..> Endereco : usa
+MercadoPagoProvider ..|> PagamentoProvider
+PixSimuladoProvider ..|> PagamentoProvider
+
+note as N1
+  reservarPeca faz um UPDATE atômico:
+  ... SET status = 'RESERVADO'
+  WHERE status = 'DISPONIVEL'.
+  Se nenhuma linha mudar, a peça já
+  foi reservada ou vendida (ADR-003).
+end note
+N1 .. CatalogoPort
+
+note as N2
+  Mercado Pago em homologação e produção;
+  Pix simulado em desenvolvimento e testes.
+end note
+N2 .. PagamentoProvider
+
+note as N3
+  O carrinho não reserva a peça.
+  Cada peça entra uma vez só.
+end note
+N3 .. Carrinho
+@enduml

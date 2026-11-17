@@ -1,0 +1,89 @@
+@startuml
+!include ../_estilo.iuml
+set separator none
+title UC05 · Processar confirmação do pagamento Pix (webhook) — Diagrama de classes\n<size:11>Requisitos 011 e 014 · Módulos 04 (Pix) e 05 (Pedidos e Carteira)</size>
+hide empty members
+
+package "Módulo 04 · Checkout e Pix" {
+  class WebhookPixController {
+    + receberNotificacao(cabecalhos: Map, corpo: string): void
+  }
+
+  class PagamentoService {
+    + registrarEvento(cabecalhos: Map, corpo: string): boolean
+    + processarPagamento(eventoId: UUID): void
+  }
+
+  class EventoWebhook {
+    - id: UUID
+    - idEventoExterno: string {unique}
+    - situacao: string
+    - recebidoEm: DateTime
+    - processado: boolean
+  }
+
+  class CobrancaPix {
+    - id: UUID
+    - pedidoId: UUID
+    - valorCentavos: int
+    - status: StatusCobranca
+    + marcarComoPaga(): void
+  }
+}
+
+package "app/core" {
+  interface PagamentoProvider {
+    + validarAssinatura(cabecalhos: Map, corpo: string): boolean
+  }
+  interface PedidosPort {
+    + marcarComoPago(pedidoId: UUID): void
+  }
+  interface CatalogoPort {
+    + marcarComoVendida(anuncioId: UUID): void
+  }
+  interface CarteiraPort {
+    + registrarVenda(pedidoId: UUID): void
+  }
+}
+
+package "Módulo 05 · Carteira" {
+  class CarteiraService {
+    + registrarVenda(pedidoId: UUID): void
+  }
+  class LancamentoCarteira {
+    - id: UUID
+    - vendedorId: UUID
+    - pedidoId: UUID
+    - tipo: TipoLancamento
+    - valorCentavos: int
+    - situacao: SituacaoSaldo
+    - criadoEm: DateTime
+  }
+}
+
+WebhookPixController --> "1" PagamentoService
+PagamentoService --> "1" PagamentoProvider
+PagamentoService --> "1" PedidosPort
+PagamentoService --> "1" CatalogoPort
+PagamentoService --> "1" CarteiraPort
+PagamentoService ..> EventoWebhook : registra
+PagamentoService ..> CobrancaPix : atualiza
+EventoWebhook "0..*" --> "1" CobrancaPix : refere-se a
+CarteiraService ..|> CarteiraPort
+CarteiraService ..> LancamentoCarteira : cria
+
+note as N1
+  idEventoExterno é único: se o Mercado Pago
+  reenviar o mesmo evento, ele é ignorado
+  (webhook idempotente, ADR-005).
+end note
+N1 .. EventoWebhook
+
+note as N2
+  Lançamentos são imutáveis (ADR-006).
+  Cada venda paga gera três: VENDA
+  (valor líquido, PENDENTE), COMISSAO
+  e TAXA_PIX, todos em centavos.
+end note
+N2 .. LancamentoCarteira
+@enduml

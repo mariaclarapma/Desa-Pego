@@ -1,0 +1,110 @@
+@startuml
+!include ../_estilo.iuml
+set separator none
+title UC02 · Publicar anúncio com simulação de ganho — Diagrama de classes\n<size:11>Requisitos 004 e 005 (e regra do 002) · Módulo 02 (Anúncios e Simulador)</size>
+hide empty members
+
+package "Módulo 02 · Anúncios" {
+  class AnuncioController {
+    + obterParametrosSimulacao(categoria: string, condicao: Condicao): ParametrosSimulacao
+    + gerarUrlsDeUpload(quantidade: int): string[]
+    + publicar(dados: NovoAnuncio): Anuncio
+  }
+
+  class AnuncioService {
+    + obterParametrosSimulacao(categoria: string, condicao: Condicao): ParametrosSimulacao
+    + gerarUrlsDeUpload(quantidade: int): string[]
+    + publicar(vendedorId: UUID, dados: NovoAnuncio): Anuncio
+    - validarFotos(fotos: string[]): void
+  }
+
+  class ArmazenamentoFotos {
+    + gerarUrlUpload(nomeArquivo: string, tipo: string): string
+    + existe(nomeArquivo: string): boolean
+  }
+
+  class Anuncio {
+    - id: UUID
+    - vendedorId: UUID
+    - titulo: string
+    - descricao: string
+    - categoria: string
+    - tamanho: string
+    - marca: string [0..1]
+    - condicao: Condicao
+    - precoCentavos: int
+    - status: StatusAnuncio
+    + podeSerAlterado(): boolean
+  }
+
+  class FotoAnuncio {
+    - url: string
+    - ordem: int
+  }
+
+  enum Condicao {
+    NOVA_COM_ETIQUETA
+    OTIMO_ESTADO
+    BOM_ESTADO
+    COM_MARCAS_DE_USO
+  }
+
+  enum StatusAnuncio {
+    DISPONIVEL
+    PAUSADO
+    RESERVADO
+    VENDIDO
+    OCULTO
+  }
+}
+
+package "app/core" {
+  interface ContasPort {
+    + possuiChavePix(usuarioId: UUID): boolean
+  }
+  interface ConfiguracaoPort {
+    + obterComissaoETaxaPix(): Taxas
+    + obterFaixaSugerida(categoria: string, condicao: Condicao): FaixaPreco [0..1]
+  }
+  class CalculadoraPreco {
+    + {static} calcular(precoCentavos: int, comissao: Decimal, taxaPix: Decimal): Simulacao
+  }
+  class Simulacao {
+    + precoCentavos: int
+    + comissaoCentavos: int
+    + taxaPixCentavos: int
+    + liquidoCentavos: int
+  }
+}
+
+AnuncioController --> "1" AnuncioService
+AnuncioService --> "1" ArmazenamentoFotos
+AnuncioService --> "1" ContasPort
+AnuncioService --> "1" ConfiguracaoPort
+AnuncioService ..> Anuncio : cria
+Anuncio "1" *-- "1..5" FotoAnuncio : fotos
+Anuncio --> "1" Condicao
+Anuncio --> "1" StatusAnuncio
+CalculadoraPreco ..> Simulacao : cria
+
+note as N1
+  A mesma função roda no navegador (simulador
+  em tempo real) e no backend (valor oficial
+  do pedido), conforme o ADR-002.
+end note
+N1 .. CalculadoraPreco
+
+note as N2
+  Só quem tem chave Pix pode
+  publicar (regra do Req. 002,
+  implementada pelo Módulo 01).
+end note
+N2 .. ContasPort
+
+note as N3
+  Preço em centavos, maior que zero.
+  Não pode ser alterado quando está
+  RESERVADO ou VENDIDO.
+end note
+N3 .. Anuncio
+@enduml

@@ -1,0 +1,56 @@
+@startuml
+!include ../_estilo.iuml
+title UC01 · Cadastrar conta e autenticar-se — Diagrama de sequência\n<size:11>Requisito 001 · Módulo 01 (Contas e Perfil)</size>
+autonumber
+hide footbox
+
+actor Visitante
+participant "Frontend" as FE
+participant ":AuthController" as C
+participant ":AuthService" as S
+database "Banco de dados" as DB
+
+== Cadastro ==
+Visitante -> FE : preenche nome, e-mail, CPF e senha
+FE -> C : cadastrar(nome, email, cpf, senha)
+C -> S : cadastrar(nome, email, cpf, senha)
+S -> S : validarCpf(cpf)
+alt CPF inválido
+  S --> FE : erro "CPF inválido"
+else CPF válido
+  S -> DB : busca o e-mail e o hash do CPF
+  DB --> S : resultado
+  alt e-mail ou CPF já cadastrado
+    S --> FE : erro "E-mail ou CPF já cadastrado"
+  else dados novos
+    S -> S : gera hash da senha (Argon2id)\ne criptografa o CPF
+    S -> DB : salva usuário
+    S --> FE : conta criada
+  end
+end
+FE --> Visitante : mostra o resultado
+
+== Login ==
+Visitante -> FE : informa e-mail e senha
+FE -> C : login(email, senha)
+C -> S : login(email, senha)
+alt muitas tentativas erradas
+  S --> FE : erro "Tente novamente mais tarde"
+else e-mail ou senha incorretos
+  S -> S : registrarTentativaFalha(email)
+  S --> FE : erro "E-mail ou senha inválidos"
+  note right of FE : mensagem genérica: não diz\nse o e-mail existe
+else credenciais corretas
+  S -> DB : salva refresh token
+  S --> FE : JWT + refresh token (cookie httpOnly)
+end
+FE --> Visitante : entra na conta ou mostra o erro
+
+opt Logout
+  Visitante -> FE : sair
+  FE -> C : logout(refreshToken)
+  C -> S : logout(refreshToken)
+  S -> DB : revoga o refresh token
+  S --> FE : sessão encerrada
+end
+@enduml

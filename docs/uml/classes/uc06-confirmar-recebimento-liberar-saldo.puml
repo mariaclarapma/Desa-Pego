@@ -1,0 +1,110 @@
+@startuml
+!include ../_estilo.iuml
+set separator none
+title UC06 · Atualizar entrega do pedido e liberar saldo — Diagrama de classes\n<size:11>Requisitos 013 e 014 · Módulo 05 (Pedidos, Carteira e Administração)</size>
+hide empty members
+
+class PedidoController {
+  + marcarComoEnviado(pedidoId: UUID): Pedido
+  + confirmarRecebimento(pedidoId: UUID): Pedido
+}
+
+class CarteiraController {
+  + consultarSaldo(): Saldo
+}
+
+class PedidoService {
+  + marcarComoEnviado(pedidoId: UUID, usuarioId: UUID): Pedido
+  + confirmarRecebimento(pedidoId: UUID, usuarioId: UUID): Pedido
+}
+
+class CarteiraService {
+  + liberarSaldo(pedidoId: UUID): void
+  + consultarSaldo(vendedorId: UUID): Saldo
+}
+
+class Pedido {
+  - id: UUID
+  - compradorId: UUID
+  - vendedorId: UUID
+  - status: StatusPedido
+  - freteCentavos: int
+  - totalCentavos: int
+  - comissaoPercentual: Decimal
+  - enderecoEntrega: string
+  + mudarStatus(novo: StatusPedido): void
+  - transicaoValida(novo: StatusPedido): boolean
+}
+
+class ItemPedido {
+  - anuncioId: UUID
+  - titulo: string
+  - precoCentavos: int
+}
+
+enum StatusPedido {
+  AGUARDANDO_PAGAMENTO
+  PAGO
+  ENVIADO
+  ENTREGUE
+  CANCELADO
+}
+
+class LancamentoCarteira {
+  - id: UUID
+  - vendedorId: UUID
+  - pedidoId: UUID
+  - tipo: TipoLancamento
+  - valorCentavos: int
+  - situacao: SituacaoSaldo
+  - criadoEm: DateTime
+}
+
+enum TipoLancamento {
+  VENDA
+  COMISSAO
+  TAXA_PIX
+  LIBERACAO
+  REPASSE
+}
+
+enum SituacaoSaldo {
+  PENDENTE
+  DISPONIVEL
+}
+
+class Saldo {
+  + pendenteCentavos: int
+  + disponivelCentavos: int
+}
+
+PedidoController --> "1" PedidoService
+CarteiraController --> "1" CarteiraService
+PedidoService --> "1" CarteiraService
+PedidoService ..> Pedido : altera
+Pedido "1" *-- "1..*" ItemPedido : itens
+Pedido --> "1" StatusPedido
+Pedido "1" -- "0..*" LancamentoCarteira : gera
+CarteiraService ..> LancamentoCarteira : cria e soma
+CarteiraService ..> Saldo : calcula
+LancamentoCarteira --> "1" TipoLancamento
+LancamentoCarteira --> "1" SituacaoSaldo
+
+note as N1
+  Transições aceitas (máquina de estados):
+  AGUARDANDO_PAGAMENTO → PAGO ou CANCELADO
+  PAGO → ENVIADO
+  ENVIADO → ENTREGUE
+  Só o vendedor marca como enviado e só o
+  comprador confirma o recebimento.
+end note
+N1 .. Pedido
+
+note as N2
+  O saldo não é um campo editável: é a soma
+  dos lançamentos. Liberar o saldo cria dois
+  lançamentos LIBERACAO (−valor PENDENTE e
+  +valor DISPONIVEL), sem alterar os antigos.
+end note
+N2 .. CarteiraService
+@enduml
