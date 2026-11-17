@@ -1,0 +1,177 @@
+@startuml
+!include ../_estilo.iuml
+set separator none
+title UC03 · Buscar peças na vitrine e consultar detalhes — Diagrama de classes\n<size:11>Requisitos 007 e 008 · Módulo 03 (Catálogo e Detalhes da Peça)</size>
+hide empty members
+left to right direction
+skinparam nodesep 35
+skinparam ranksep 55
+
+package "Frontend (Next.js)" {
+  class PaginaVitrine <<página SSR>> {
+    - filtro: FiltroCatalogo
+    + aplicarFiltros(filtro: FiltroCatalogo): void
+    + limparFiltros(): void
+    + mudarPagina(pagina: int): void
+  }
+  class PaginaDetalhesPeca <<página SSR/ISR>> {
+    + exibirGaleria(fotos: string[]): void
+    + habilitarCompra(detalhes: DetalhesPeca): boolean
+    + exibirErroAmigavel(): void
+  }
+}
+
+package "Módulo 03 · Catálogo (app/catalogo)" {
+
+  class CatalogoController <<controller>> {
+    + listar(filtro: FiltroCatalogo): PaginaResultado<PecaResumo>
+    + detalhar(id: UUID): DetalhesPeca
+  }
+
+  class CatalogoService <<service>> {
+    - anuncios: AnunciosPort
+    - contas: ContasPort
+    - cache: CacheVitrine
+    + listar(filtro: FiltroCatalogo): PaginaResultado<PecaResumo>
+    + detalhar(id: UUID): DetalhesPeca
+    - validarFiltro(filtro: FiltroCatalogo): void
+  }
+
+  class CacheVitrine <<cache Redis>> {
+    - ttlSegundos: int
+    + obter(chave: string): PaginaResultado<PecaResumo> [0..1]
+    + guardar(chave: string, valor: PaginaResultado<PecaResumo>): void
+    + invalidar(): void
+  }
+
+  class DetalhesPeca <<DTO>> {
+    + id: UUID
+    + titulo: string
+    + descricao: string
+    + categoria: string
+    + tamanho: string
+    + marca: string [0..1]
+    + condicao: string
+    + precoCentavos: int
+    + fotos: string [1..5]
+    + disponibilidade: Disponibilidade
+    + vendedor: PerfilPublicoVendedor
+    + podeComprar(): boolean
+  }
+
+  enum Disponibilidade {
+    DISPONIVEL
+    RESERVADA
+    VENDIDA
+  }
+
+  class PecaNaoEncontradaException <<exception>> {
+    .. inexistente ou ocultada → 404 ..
+  }
+  class FiltroInvalidoException <<exception>>
+}
+
+package "app/core" {
+  interface AnunciosPort <<interface>> {
+    + buscarAtivos(filtro: FiltroCatalogo): PaginaResultado<PecaResumo>
+    + obterVisivel(id: UUID): DadosAnuncio [0..1]
+  }
+  interface ContasPort <<interface>> {
+    + obterPerfilPublico(usuarioId: UUID): PerfilPublicoVendedor
+  }
+
+  class FiltroCatalogo <<DTO>> {
+    + busca: string [0..1]
+    + categoria: string [0..1]
+    + tamanho: string [0..1]
+    + condicao: string [0..1]
+    + precoMinCentavos: int [0..1]
+    + precoMaxCentavos: int [0..1]
+    + ordenacao: OrdenacaoCatalogo = RECENTES
+    + pagina: int = 1
+    + tamanhoPagina: int
+    + chaveCache(): string
+  }
+
+  enum OrdenacaoCatalogo {
+    RECENTES
+    MENOR_PRECO
+    MAIOR_PRECO
+  }
+
+  class "PaginaResultado<T>" as PaginaResultado <<DTO>> {
+    + itens: T [0..*]
+    + pagina: int
+    + tamanhoPagina: int
+    + total: int
+    + totalPaginas(): int
+  }
+
+  class PecaResumo <<DTO>> {
+    + id: UUID
+    + titulo: string
+    + tamanho: string
+    + condicao: string
+    + precoCentavos: int
+    + fotoPrincipalUrl: string
+  }
+
+  class DadosAnuncio <<DTO>> {
+    + id: UUID
+    + vendedorId: UUID
+    + titulo: string
+    + descricao: string
+    + categoria: string
+    + tamanho: string
+    + marca: string [0..1]
+    + condicao: string
+    + precoCentavos: int
+    + status: string
+    + fotos: string [1..5]
+  }
+
+  class PerfilPublicoVendedor <<DTO>> {
+    + nomePublico: string
+    + cidade: string
+    .. nunca contém CPF ..
+  }
+}
+
+package "Implementações em outros módulos" {
+  class AnuncioConsultaService <<Módulo 02>> {
+    .. full-text PostgreSQL sem acento/maiúsculas ..
+  }
+  class PerfilVendedorService <<Módulo 01>>
+}
+
+PaginaVitrine ..> CatalogoController : GET /catalogo
+PaginaDetalhesPeca ..> CatalogoController : GET /catalogo/pecas/{id}
+PaginaVitrine ..> FiltroCatalogo : <<use>>
+
+CatalogoController "1" --> "1" CatalogoService
+CatalogoService "1" --> "1" AnunciosPort
+CatalogoService "1" --> "1" ContasPort
+CatalogoService "1" --> "1" CacheVitrine
+CatalogoService ..> DetalhesPeca : <<create>>
+CatalogoService ..> PecaNaoEncontradaException : <<throw>>
+CatalogoService ..> FiltroInvalidoException : <<throw>>
+
+DetalhesPeca --> "1" Disponibilidade
+DetalhesPeca *-- "1" PerfilPublicoVendedor
+
+FiltroCatalogo --> "1" OrdenacaoCatalogo
+PaginaResultado o-- "0..*" PecaResumo : itens
+AnunciosPort ..> FiltroCatalogo
+AnunciosPort ..> PaginaResultado
+AnunciosPort ..> DadosAnuncio
+
+AnuncioConsultaService ..|> AnunciosPort
+PerfilVendedorService ..|> ContasPort
+
+note as N1
+  Só listagens e filtros populares
+  (TTL curto). Disponibilidade da peça
+  nos detalhes é sempre lida do banco.
+end note
+N1 .. CacheVitrine
+@enduml

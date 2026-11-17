@@ -1,0 +1,106 @@
+@startuml
+!include ../_estilo.iuml
+set separator none
+title Desa Pego · Diagrama de implantação (infraestrutura planejada de produção)\n<size:11>AWS sa-east-1 · Docker · ECS Fargate · Cloudflare (ADR-007 e seções 4.4, 7 e 9 da arquitetura)</size>
+skinparam nodesep 30
+skinparam ranksep 50
+
+' ================= Cliente =================
+node "Dispositivo do usuário\n«device»" as DEV {
+  node "Navegador web\n«execution environment»" as BROWSER {
+    artifact "Aplicação React\n(bundle JS do Next.js\n+ app/core/pricing)" as ART_BUNDLE
+  }
+}
+
+' ================= Borda (externo) =================
+node "Cloudflare\n«serviço externo · CDN/WAF»" as CF {
+  component "DNS + proxy reverso" as CF_PROXY
+  component "Cache de páginas\ne fotos" as CF_CACHE
+  component "WAF / proteção\ncontra bots" as CF_WAF
+}
+
+' ================= AWS =================
+node "AWS · região sa-east-1 (São Paulo)\n«cloud»" as AWS {
+
+  node "Application Load Balancer\n«ALB · multi-AZ»" as ALB
+
+  node "Cluster AWS ECS Fargate" as ECS {
+    node "Serviço web\n«tarefa Fargate · N réplicas»" as T_WEB {
+      node "Contêiner Docker" as C_WEB {
+        artifact "desapego-web\n(Next.js · SSR/ISR)" as ART_WEB
+      }
+    }
+    node "Serviço api\n«tarefa Fargate · N réplicas»" as T_API {
+      node "Contêiner Docker " as C_API {
+        artifact "desapego-api\n(NestJS · Node.js 20\n5 módulos + app/core)" as ART_API
+      }
+    }
+    node "Serviço worker\n«tarefa Fargate» (hipótese H1)" as T_WRK {
+      node "Contêiner Docker  " as C_WRK {
+        artifact "desapego-api em modo worker\n(consumidores BullMQ)" as ART_WRK
+      }
+    }
+  }
+
+  node "Amazon RDS\n«multi-AZ · backup PITR 14 dias»" as RDS {
+    database "PostgreSQL 16\n(desapego)" as DB
+  }
+  node "Amazon ElastiCache" as EC {
+    database "Redis 7\n(cache, TTL de reservas,\nrate limiting, filas BullMQ)" as RDS_REDIS
+  }
+  node "Amazon S3\n«versionamento + replicação»" as S3N {
+    artifact "bucket de fotos das peças" as ART_S3
+  }
+  node "AWS Secrets Manager" as SM
+  node "Amazon CloudWatch Logs" as CWL
+}
+
+' ================= Externos =================
+node "Mercado Pago\n«serviço externo»" as MP {
+  component "API Pix\n(cobrança, QR Code)" as MP_API
+  component "Notificações\n(webhook)" as MP_WH
+}
+node "ViaCEP\n«serviço externo»" as VIACEP
+node "Sentry + Grafana Cloud\n«serviços externos de monitoramento»" as MON
+
+' ================= Comunicação =================
+BROWSER --> CF_PROXY : HTTPS (TLS 1.2+, HSTS)
+BROWSER ..> ART_S3 : HTTPS PUT\n(URL pré-assinada)
+CF_PROXY --> ALB : HTTPS
+CF_CACHE ..> ART_S3 : origem das fotos\n(HTTPS GET)
+
+ALB --> T_WEB : HTTP (rede privada)\npáginas
+ALB --> T_API : HTTP (rede privada)\n/api e /webhooks
+T_WEB --> ALB : REST/JSON (SSR → API)
+
+T_API --> DB : TCP 5432 · Prisma (TLS)
+T_API --> RDS_REDIS : TCP 6379
+T_API --> ART_S3 : HTTPS · AWS SDK
+T_API --> MP_API : HTTPS REST
+T_API --> VIACEP : HTTPS REST
+T_WRK --> DB : TCP 5432 · Prisma (TLS)
+T_WRK --> RDS_REDIS : TCP 6379 · BullMQ
+
+MP_WH --> CF_PROXY : HTTPS POST\n(webhook assinado)
+
+ECS ..> SM : leitura de segredos (IAM)
+ECS ..> CWL : logs dos contêineres
+ECS ..> MON : erros e métricas (SDK)
+
+legend bottom right
+  **Hospedado pela aplicação (AWS):** ALB, ECS Fargate, RDS, ElastiCache, S3,
+  Secrets Manager e CloudWatch. Provisionados por Terraform.
+  **Externos:** navegador do usuário, Cloudflare, Mercado Pago, ViaCEP,
+  Sentry e Grafana Cloud.
+  ----
+  **Hipóteses** (não definidas na documentação):
+  H1. Workers BullMQ rodam como serviço ECS separado, com a mesma
+       imagem da API (a doc só diz "workers para tarefas assíncronas").
+  H2. O SSR do Next.js chama a API pelo ALB; portas internas e
+       sub-redes da VPC não foram definidas.
+  H3. O registro de imagens Docker (ex.: Amazon ECR) não foi definido.
+  Homologação espelha este desenho em menor escala, com Mercado Pago
+  em sandbox; no ambiente local tudo roda no Docker Compose
+  (PostgreSQL, Redis, MinIO) com o PixSimuladoProvider.
+endlegend
+@enduml

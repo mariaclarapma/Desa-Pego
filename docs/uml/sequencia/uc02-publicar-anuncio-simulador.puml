@@ -1,0 +1,132 @@
+@startuml
+!include ../_estilo.iuml
+title UC02 · Publicar anúncio com simulação de ganho — Diagrama de sequência\n<size:11>Requisitos 004 e 005 (e regra do 002) · Módulo 02 (Anúncios e Simulador)</size>
+autonumber "<b>0."
+hide footbox
+
+actor "Vendedor" as V
+box "Navegador" #FAFAFA
+  participant ":FormularioAnuncio\n(Next.js)" as FE
+  participant "CalculadoraPreco\n(app/core/pricing)" as CALC
+end box
+box "API NestJS · Módulo 02" #FAFAFA
+  participant ":SimuladorController" as SC
+  participant ":SimuladorService" as SS
+  participant ":AnuncioController" as AC
+  participant ":AnuncioService" as AS
+  participant ":AnuncioRepository" as AR
+end box
+box "app/core (interfaces)" #F0FAF9
+  participant "<<interface>>\n:ConfiguracaoPort" as CONF
+  participant "<<interface>>\n:ContasPort" as CONTAS
+  participant "<<interface>>\n:ArmazenamentoArquivos" as ARM
+end box
+participant "Fila BullMQ\n(Redis)" as FILA
+database "PostgreSQL" as PG
+participant "Amazon S3" as S3
+
+note over V, FE : Vendedor autenticado (JWT). Todas as chamadas à API passam pelo guard de autenticação.
+
+== Simulação de ganho ==
+V -> FE : abre "Anunciar peça" e informa categoria e condição
+activate FE
+FE -> SC : GET /anuncios/simulacao/parametros?categoria&condicao
+activate SC
+SC -> SS : obterParametros(categoria, condicao)
+activate SS
+SS -> CONF : obterVigente()
+CONF --> SS : ConfiguracaoPlataforma (comissão, taxa Pix)
+SS -> CONF : obterFaixaSugerida(categoria, condicao)
+CONF --> SS : FaixaPreco [0..1]
+SS --> SC : ParametrosSimulacao
+deactivate SS
+SC --> FE : 200 OK ParametrosSimulacao
+deactivate SC
+opt existe faixa sugerida para a categoria e condição
+  FE --> V : exibe faixa de preço sugerida
+end
+
+loop a cada alteração do campo de preço
+  V -> FE : digita o preço
+  FE -> CALC : calcular(precoCentavos, comissaoPercentual, taxaPixPercentual)
+  activate CALC
+  CALC --> FE : DivisaoValor (preço, comissão, taxa Pix, líquido)
+  deactivate CALC
+  FE --> V : atualiza valores em tempo real (< 100 ms)
+end
+note right of CALC
+  Mesma função usada no backend
+  ao gerar os lançamentos (ADR-002).
+  O vendedor pode ignorar a sugestão.
+end note
+
+== Envio das fotos (URL pré-assinada) ==
+V -> FE : seleciona as fotos
+FE -> AC : POST /anuncios/fotos/urls-upload (tipo e tamanho de cada foto)
+activate AC
+AC -> AS : gerarUrlsUpload(vendedorId, arquivos)
+activate AS
+AS -> AS : validarFotos(arquivos)
+alt quantidade fora de 1 a 5, tipo diferente de JPG/PNG/WebP ou tamanho acima do limite
+  AS --> AC : AnuncioInvalidoException
+  AC --> FE : 400 Bad Request (motivo)
+  FE --> V : mostra erro nas fotos
+else fotos válidas
+  loop para cada foto
+    AS -> ARM : gerarUrlUpload(chave, tipoConteudo, tamanhoMaxBytes)
+    ARM --> AS : urlPreAssinada
+  end
+  AS --> AC : UrlUpload[]
+  AC --> FE : 200 OK UrlUpload[]
+  loop para cada foto
+    FE -> S3 : PUT arquivo na URL pré-assinada
+    S3 --> FE : 200 OK
+  end
+end
+deactivate AS
+deactivate AC
+
+== Publicação ==
+V -> FE : confirma a publicação
+FE -> AC : POST /anuncios (CriarAnuncioDto com chavesFotos)
+activate AC
+AC -> AS : publicar(vendedorId, dto)
+activate AS
+AS -> CONTAS : possuiChavePixValida(vendedorId)
+CONTAS --> AS : boolean
+
+alt vendedor sem chave Pix cadastrada
+  AS --> AC : SemChavePixException
+  AC --> FE : 403 Forbidden "Cadastre sua chave Pix para anunciar"
+else possui chave Pix
+  AS -> AS : valida campos obrigatórios,\ncondição e precoCentavos > 0
+  alt dados inválidos
+    AS --> AC : AnuncioInvalidoException
+    AC --> FE : 400 Bad Request (campos com erro)
+  else dados válidos
+    loop para cada chave de foto
+      AS -> ARM : existeObjeto(chave)
+      ARM --> AS : boolean
+    end
+    alt alguma foto não foi enviada ao S3
+      AS --> AC : AnuncioInvalidoException
+      AC --> FE : 400 Bad Request "Envie de 1 a 5 fotos"
+    else todas as fotos presentes
+      AS -> AS : Anuncio.criar(vendedorId, dto)\n(status = DISPONIVEL)
+      AS -> AR : salvar(anuncio)
+      activate AR
+      AR -> PG : INSERT anuncio + foto_anuncio (transação)
+      PG --> AR : ok
+      AR --> AS : anuncio
+      deactivate AR
+      AS ->> FILA : agendarGeracao(anuncioId) [gerar miniaturas]
+      AS --> AC : anuncio
+      AC --> FE : 201 Created (AnuncioResposta)
+      FE --> V : anúncio publicado na vitrine
+    end
+  end
+end
+deactivate AS
+deactivate AC
+deactivate FE
+@enduml

@@ -1,0 +1,106 @@
+@startuml
+!include ../_estilo.iuml
+title UC05 · Processar confirmação do pagamento Pix (webhook) — Diagrama de sequência\n<size:11>Requisitos 011 e 014 · Módulos 04 (Pix) e 05 (Pedidos e Carteira)</size>
+autonumber "<b>0."
+hide footbox
+
+actor "Provedor Pix\n(Mercado Pago)" as MP <<sistema externo>>
+box "API NestJS · Módulo 04" #FAFAFA
+  participant ":WebhookPixController" as WC
+  participant ":WebhookPixService" as WS
+  participant ":EventoWebhookRepository" as ER
+  participant ":ConfirmacaoPagamentoWorker" as W
+  participant ":CobrancaPixRepository" as CR
+end box
+box "app/core (interfaces)" #F0FAF9
+  participant "<<interface>>\n:PagamentoProvider" as PAG
+  participant "<<interface>>\n:PedidosPort" as PED
+  participant "<<interface>>\n:CatalogoPort" as CAT
+  participant "<<interface>>\n:CarteiraPort" as CART
+end box
+queue "Fila BullMQ\n(Redis)" as FILA
+database "PostgreSQL" as PG
+
+== Recebimento do webhook (resposta rápida) ==
+MP -> WC : POST /webhooks/pix (cabeçalho de assinatura + corpo)
+activate WC
+WC -> WS : registrar(cabecalhos, corpoBruto)
+activate WS
+WS -> PAG : validarAssinatura(cabecalhos, corpoBruto)
+PAG --> WS : boolean
+
+alt assinatura inválida
+  WS --> WC : ASSINATURA_INVALIDA
+  WC --> MP : 401 Unauthorized (evento descartado e registrado em log)
+else assinatura válida
+  WS -> PAG : interpretarEvento(corpoBruto)
+  PAG --> WS : EventoPagamento (idEvento, idCobrancaExterna, situacao)
+  WS -> ER : inserirSeNovo(evento)
+  ER -> PG : INSERT evento_webhook\nON CONFLICT (id_evento_externo) DO NOTHING
+  PG --> ER : linhas inseridas
+  ER --> WS : novo (boolean)
+  alt evento repetido
+    WS --> WC : DUPLICADO
+    WC --> MP : 200 OK (ignorado, sem efeitos)
+  else evento novo
+    WS ->> FILA : enfileirarConfirmacao(eventoId)
+    WS --> WC : ENFILEIRADO
+    WC --> MP : 200 OK
+  end
+end
+deactivate WS
+deactivate WC
+
+== Processamento assíncrono ==
+FILA -> W : processar(eventoId)
+activate W
+W -> ER : buscarPorId(eventoId)
+ER --> W : EventoWebhook
+W -> CR : buscarPorIdExterno(idCobrancaExterna)
+CR --> W : CobrancaPix [0..1]
+
+alt situacao = APROVADO e cobrança PENDENTE
+  group transação única no PostgreSQL
+    W -> CR : cobranca.confirmar() e salvar (CONFIRMADA)
+    W -> PED : marcarComoPago(pedidoId)
+    activate PED
+    note right of PED : MaquinaEstadosPedido:\nAGUARDANDO_PAGAMENTO → PAGO
+    PED --> W : ok
+    deactivate PED
+    loop para cada item do pedido
+      W -> CAT : confirmarVenda(anuncioId)
+      note right of CAT : RESERVADO → VENDIDO\n(revalida a página ISR e o cache da vitrine)
+    end
+    W -> CART : registrarVenda(pedidoId)
+    activate CART
+    CART -> CART : CalculadoraPreco.calcular(preço,\ncomissão e taxa congeladas no pedido)
+    CART -> PG : INSERT 3 lançamentos imutáveis:\nVENDA (PENDENTE), COMISSAO, TAXA_PIX
+    CART --> W : ok
+    deactivate CART
+    W -> ER : marcarProcessado(eventoId)
+  end
+else situacao = EXPIRADO e cobrança PENDENTE
+  group transação única no PostgreSQL
+    W -> CR : cobranca.expirar() e salvar (EXPIRADA)
+    W -> PED : cancelar(pedidoId)
+    loop para cada item do pedido
+      W -> CAT : liberarPeca(anuncioId)
+    end
+    W -> ER : marcarProcessado(eventoId)
+  end
+else cobrança já processada, inexistente ou pedido já cancelado
+  W -> ER : marcarProcessado(eventoId)
+  W -> W : registra alerta para conferência manual
+  note right of W
+    Ex.: Pix pago depois que a reserva expirou.
+    O tratamento (estorno ou conciliação) não está
+    definido no MVP: fica registrado para o admin.
+  end note
+end
+
+opt falha durante o processamento
+  W --> FILA : job falha → transação desfeita
+  FILA -> W : nova tentativa (retentativa do BullMQ)
+end
+deactivate W
+@enduml

@@ -1,0 +1,72 @@
+' Estilo visual comum a todos os diagramas UML do Desa Pego.
+' Incluído com: !include ../_estilo.iuml
+
+skinparam defaultFontName "Helvetica"
+skinparam defaultFontSize 12
+skinparam shadowing false
+skinparam roundCorner 6
+skinparam dpi 110
+skinparam ArrowColor #444444
+skinparam ArrowThickness 1
+skinparam TitleFontSize 16
+skinparam TitleFontStyle bold
+skinparam LegendBackgroundColor #FFFDF5
+skinparam LegendBorderColor #C9B98A
+skinparam NoteBackgroundColor #FFF8DC
+skinparam NoteBorderColor #C9B98A
+
+skinparam class {
+  BackgroundColor #FFFFFF
+  BorderColor #555555
+  HeaderBackgroundColor #F2F2F2
+  AttributeFontSize 11
+}
+skinparam stereotypeCBackgroundColor #F2A900
+skinparam stereotypeIBackgroundColor #32BCAD
+skinparam stereotypeEBackgroundColor #DDDDDD
+
+skinparam package {
+  BackgroundColor #FCFCFC
+  BorderColor #888888
+  FontStyle bold
+}
+
+skinparam sequence {
+  ParticipantBackgroundColor #FFFFFF
+  ParticipantBorderColor #555555
+  ActorBackgroundColor #FFFFFF
+  ActorBorderColor #555555
+  LifeLineBorderColor #999999
+  LifeLineBackgroundColor #F2F2F2
+  GroupBorderColor #888888
+  GroupBackgroundColor #F7F7F7
+  DividerBackgroundColor #EFEFEF
+  BoxBorderColor #BBBBBB
+}
+skinparam responseMessageBelowArrow true
+skinparam maxMessageSize 220
+
+skinparam component {
+  BackgroundColor #FFFFFF
+  BorderColor #555555
+}
+skinparam interface {
+  BackgroundColor #32BCAD
+  BorderColor #1F7F74
+}
+skinparam node {
+  BackgroundColor #FAFAFA
+  BorderColor #666666
+}
+skinparam database {
+  BackgroundColor #FFFFFF
+  BorderColor #555555
+}
+skinparam artifact {
+  BackgroundColor #FFFFFF
+  BorderColor #777777
+}
+skinparam cloud {
+  BackgroundColor #FFFFFF
+  BorderColor #777777
+}

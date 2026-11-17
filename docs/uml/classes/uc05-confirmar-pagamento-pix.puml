@@ -1,0 +1,200 @@
+@startuml
+!include ../_estilo.iuml
+set separator none
+title UC05 · Processar confirmação do pagamento Pix (webhook) — Diagrama de classes\n<size:11>Requisitos 011 e 014 · Módulos 04 (Pix) e 05 (Pedidos e Carteira)</size>
+hide empty members
+left to right direction
+skinparam nodesep 35
+skinparam ranksep 55
+
+package "Módulo 04 · Checkout e Pix (app/checkout)" {
+
+  class WebhookPixController <<controller>> {
+    + receber(cabecalhos: Map, corpoBruto: string): void
+  }
+
+  class WebhookPixService <<service>> {
+    - pagamento: PagamentoProvider
+    - eventos: EventoWebhookRepository
+    - fila: FilaPagamentos
+    + registrar(cabecalhos: Map, corpoBruto: string): ResultadoRecebimento
+  }
+
+  enum ResultadoRecebimento {
+    ENFILEIRADO
+    DUPLICADO
+    ASSINATURA_INVALIDA
+  }
+
+  class EventoWebhook <<entity>> {
+    - id: UUID
+    - idEventoExterno: string {unique}
+    - idCobrancaExterna: string
+    - situacao: SituacaoPagamento
+    - payload: JSON
+    - recebidoEm: DateTime
+    - processadoEm: DateTime [0..1]
+    + marcarProcessado(agora: DateTime): void
+  }
+
+  class EventoWebhookRepository <<repository>> {
+    + inserirSeNovo(evento: EventoWebhook): boolean
+    + buscarPorId(id: UUID): EventoWebhook
+    + marcarProcessado(id: UUID): void
+  }
+
+  class FilaPagamentos <<produtor BullMQ>> {
+    + enfileirarConfirmacao(eventoId: UUID): void
+  }
+
+  class ConfirmacaoPagamentoWorker <<worker BullMQ>> {
+    - eventos: EventoWebhookRepository
+    - cobrancas: CobrancaPixRepository
+    - pedidos: PedidosPort
+    - catalogo: CatalogoPort
+    - carteira: CarteiraPort
+    - transacao: GerenciadorTransacao
+    + processar(eventoId: UUID): void
+    - confirmar(cobranca: CobrancaPix): void
+    - expirar(cobranca: CobrancaPix): void
+  }
+
+  class CobrancaPix <<entity>> {
+    - id: UUID
+    - pedidoId: UUID
+    - idExterno: string
+    - valorCentavos: int
+    - expiraEm: DateTime
+    - status: StatusCobranca
+    + estaPendente(): boolean
+    + confirmar(): void
+    + expirar(): void
+  }
+
+  class CobrancaPixRepository <<repository>> {
+    + buscarPorIdExterno(idExterno: string): CobrancaPix [0..1]
+    + salvar(cobranca: CobrancaPix): void
+  }
+
+  class GerenciadorTransacao <<infra Prisma>> {
+    + executar(bloco: Funcao): void
+  }
+
+  class AssinaturaInvalidaException <<exception>>
+}
+
+package "app/core" {
+  interface PagamentoProvider <<interface>> {
+    + validarAssinatura(cabecalhos: Map, corpoBruto: string): boolean
+    + interpretarEvento(corpoBruto: string): EventoPagamento
+  }
+  class EventoPagamento <<DTO>> {
+    + idEvento: string
+    + idCobrancaExterna: string
+    + situacao: SituacaoPagamento
+  }
+  enum SituacaoPagamento {
+    APROVADO
+    EXPIRADO
+    OUTRO
+  }
+  interface PedidosPort <<interface>> {
+    + marcarComoPago(pedidoId: UUID): void
+    + cancelar(pedidoId: UUID): void
+  }
+  interface CatalogoPort <<interface>> {
+    + confirmarVenda(anuncioId: UUID): void
+    + liberarPeca(anuncioId: UUID): void
+  }
+  interface CarteiraPort <<interface>> {
+    + registrarVenda(pedidoId: UUID): void
+  }
+  class CalculadoraPreco <<utility>> {
+    + {static} calcular(precoCentavos: int, comissaoPercentual: Decimal, taxaPixPercentual: Decimal): DivisaoValor
+  }
+}
+
+package "Módulo 05 · Pedidos e Carteira (app/pedidos)" {
+  class CarteiraService <<service>> {
+    - lancamentos: LancamentoRepository
+    - pedidos: PedidoRepository
+    + registrarVenda(pedidoId: UUID): void
+    .. idempotente por pedidoId ..
+  }
+  class PedidoService <<service>> {
+    + marcarComoPago(pedidoId: UUID): void
+    + cancelar(pedidoId: UUID): void
+  }
+  class LancamentoCarteira <<entity>> {
+    - id: UUID
+    - vendedorId: UUID
+    - pedidoId: UUID
+    - tipo: TipoLancamento
+    - valorCentavos: int
+    - situacao: SituacaoSaldo
+    - criadoEm: DateTime
+    .. imutável (somente inserção) ..
+  }
+  enum TipoLancamento {
+    VENDA
+    COMISSAO
+    TAXA_PIX
+    LIBERACAO
+    REPASSE
+  }
+  enum SituacaoSaldo {
+    PENDENTE
+    DISPONIVEL
+  }
+}
+
+package "Adaptadores" {
+  class MercadoPagoProvider
+  class PixSimuladoProvider
+}
+
+WebhookPixController "1" --> "1" WebhookPixService
+WebhookPixController ..> AssinaturaInvalidaException : <<throw>>
+WebhookPixService "1" --> "1" PagamentoProvider
+WebhookPixService "1" --> "1" EventoWebhookRepository
+WebhookPixService "1" --> "1" FilaPagamentos
+WebhookPixService ..> ResultadoRecebimento
+EventoWebhookRepository ..> EventoWebhook
+EventoWebhook --> "1" SituacaoPagamento
+PagamentoProvider ..> EventoPagamento
+EventoPagamento --> "1" SituacaoPagamento
+
+ConfirmacaoPagamentoWorker "1" --> "1" EventoWebhookRepository
+ConfirmacaoPagamentoWorker "1" --> "1" CobrancaPixRepository
+ConfirmacaoPagamentoWorker "1" --> "1" PedidosPort
+ConfirmacaoPagamentoWorker "1" --> "1" CatalogoPort
+ConfirmacaoPagamentoWorker "1" --> "1" CarteiraPort
+ConfirmacaoPagamentoWorker "1" --> "1" GerenciadorTransacao
+CobrancaPixRepository ..> CobrancaPix
+EventoWebhook "0..*" -- "1" CobrancaPix : refere-se a >
+
+PedidoService ..|> PedidosPort
+CarteiraService ..|> CarteiraPort
+CarteiraService ..> CalculadoraPreco : <<use>>
+CarteiraService ..> LancamentoCarteira : <<create>>
+LancamentoCarteira --> "1" TipoLancamento
+LancamentoCarteira --> "1" SituacaoSaldo
+
+MercadoPagoProvider ..|> PagamentoProvider
+PixSimuladoProvider ..|> PagamentoProvider
+
+note as N1
+  inserirSeNovo usa a restrição UNIQUE em
+  idEventoExterno (INSERT ... ON CONFLICT DO NOTHING):
+  devolve false para evento repetido (idempotência).
+end note
+N1 .. EventoWebhookRepository
+
+note as N2
+  Por pedido pago gera 3 lançamentos:
+  VENDA (líquido, PENDENTE), COMISSAO e TAXA_PIX,
+  com a comissão congelada no pedido.
+  Soma dos três = preço das peças (diferença de 0 centavo).
+end note
+N2 .. CarteiraService
+@enduml

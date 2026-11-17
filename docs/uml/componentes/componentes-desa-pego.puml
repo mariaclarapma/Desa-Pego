@@ -1,0 +1,129 @@
+@startuml
+!include ../_estilo.iuml
+set separator none
+title Desa Pego · Diagrama de componentes (arquitetura geral)\n<size:11>Monolito modular NestJS com 5 módulos e núcleo app/core (ADR-001)</size>
+skinparam componentStyle uml2
+skinparam nodesep 25
+skinparam ranksep 45
+
+actor "Usuário\n(comprador, vendedor, admin)" as USR
+
+component "Frontend Web «Next.js · TypeScript»" as FE {
+  component "Páginas públicas\n(vitrine e peça · SSR/ISR)" as FE_PUB
+  component "Carrinho e checkout\n(Zustand)" as FE_CHK
+  component "Área do comprador\n(compras)" as FE_COMP
+  component "Área do vendedor\n(anúncios, simulador, carteira)" as FE_VEND
+  component "Painel do admin" as FE_ADM
+  component "Cliente da API\n(TanStack Query)" as FE_API
+}
+
+component "app/core/pricing\n«biblioteca compartilhada\nfrontend + backend»" as PRICING
+
+cloud "Mercado Pago\n«externo»" as MP
+
+component "API Desa Pego «NestJS · monolito modular · um único processo»" as API {
+  portin "REST/JSON (OpenAPI)" as P_REST
+  portin "Webhook Pix (HTTPS)" as P_WH
+
+  component "Módulo 01\nContas e Perfil" as M1
+  component "Módulo 02\nAnúncios e Simulador" as M2
+  component "Módulo 03\nCatálogo" as M3
+  component "Módulo 04\nCarrinho, Checkout e Pix" as M4
+  component "Módulo 05\nPedidos, Carteira e Admin" as M5
+
+  component "app/core «interfaces compartilhadas»" as CORE {
+    interface "ContasPort" as I_CONTAS
+    interface "AnunciosPort" as I_ANUN
+    interface "CatalogoPort" as I_CAT
+    interface "PedidosPort" as I_PED
+    interface "CarteiraPort" as I_CART
+    interface "ConfiguracaoPort" as I_CONF
+    interface "ArmazenamentoArquivos" as I_ARM
+    interface "PagamentoProvider" as I_PAG
+    interface "CepProvider" as I_CEP
+  }
+
+  component "Adaptadores" as ADP {
+    component "S3Armazenamento\nProvider" as A_S3
+    component "MercadoPago\nProvider" as A_MP
+    component "PixSimulado\nProvider (dev/testes)" as A_SIM
+    component "ViaCep\nProvider" as A_CEP
+  }
+
+  component "Infraestrutura comum\n(PrismaService, filas e workers BullMQ, guard JWT)" as INFRA
+}
+
+database "PostgreSQL 16\n(fonte da verdade,\nlivro-razão)" as PG
+database "Redis 7\n(cache, TTL de reservas,\nrate limiting, filas)" as REDIS
+storage "Amazon S3\n(fotos das peças)" as S3
+cloud "ViaCEP\n«externo»" as VIACEP
+
+' ---------- Frontend ----------
+USR --> FE_PUB : HTTPS
+FE_PUB ..> FE_API
+FE_CHK ..> FE_API
+FE_COMP ..> FE_API
+FE_VEND ..> FE_API
+FE_ADM ..> FE_API
+FE_VEND ..> PRICING : <<use>>
+FE_VEND ..> S3 : PUT (URL pré-assinada)
+FE_API --> P_REST
+
+' ---------- Entradas da API ----------
+P_REST --> M1
+P_REST --> M2
+P_REST --> M3
+P_REST --> M4
+P_REST --> M5
+MP --> P_WH : webhook Pix
+P_WH --> M4
+
+' ---------- Interfaces fornecidas ----------
+M1 -- I_CONTAS
+M2 -- I_ANUN
+M3 -- I_CAT
+M5 -- I_PED
+M5 -- I_CART
+M5 -- I_CONF
+
+' ---------- Interfaces requeridas ----------
+M2 ..> I_CONTAS
+M3 ..> I_CONTAS
+M3 ..> I_ANUN
+M2 ..> I_CONF
+M4 ..> I_CAT
+M4 ..> I_PED
+M4 ..> I_CART
+M4 ..> I_CONF
+M2 ..> I_ARM
+M4 ..> I_PAG
+M4 ..> I_CEP
+M2 ..> PRICING : <<use>>
+M5 ..> PRICING : <<use>>
+
+' ---------- Adaptadores ----------
+I_ARM -- A_S3
+I_PAG -- A_MP
+I_PAG -- A_SIM
+I_CEP -- A_CEP
+
+CORE ..> INFRA
+A_S3 --> S3 : AWS SDK
+A_MP --> MP : REST (cobrança Pix)
+A_CEP --> VIACEP : REST
+INFRA --> PG : Prisma (SQL)
+INFRA --> REDIS : cache e BullMQ
+
+legend bottom right
+  |= Notação |= Significado |
+  | componente —○ interface | o componente fornece (implementa) a interface |
+  | - - - > | dependência: interface requerida / uso |
+  | ——> | comunicação em tempo de execução |
+  Os cinco módulos são pacotes NestJS do mesmo processo
+  (monolito modular), não serviços independentes.
+  Um módulo não acessa tabelas de outro: conversa só
+  pelas interfaces de app/core, mockadas nos testes.
+  Os módulos usam a Infraestrutura comum para acessar
+  PostgreSQL e Redis (cada um com as próprias tabelas).
+endlegend
+@enduml

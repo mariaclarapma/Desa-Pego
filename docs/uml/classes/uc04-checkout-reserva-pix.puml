@@ -1,0 +1,241 @@
+@startuml
+!include ../_estilo.iuml
+set separator none
+title UC04 · Reservar peça no checkout e gerar cobrança Pix — Diagrama de classes\n<size:11>Requisitos 010 e 011 · Módulo 04 (Carrinho, Checkout e Pix)</size>
+hide empty members
+left to right direction
+skinparam nodesep 35
+skinparam ranksep 55
+
+package "Frontend (Next.js)" {
+  class CarrinhoStore <<store Zustand>> {
+    - itens: ItemCarrinho [0..*]
+    + adicionar(item: ItemCarrinho): void
+    + remover(anuncioId: UUID): void
+    + contem(anuncioId: UUID): boolean
+  }
+  class ItemCarrinho <<value object>> {
+    + anuncioId: UUID
+    + vendedorId: UUID
+    + titulo: string
+    + precoCentavos: int
+    .. quantidade sempre 1 ..
+  }
+  CarrinhoStore *-- "0..*" ItemCarrinho
+}
+
+package "Módulo 04 · Checkout (app/checkout)" {
+
+  class CheckoutController <<controller>> {
+    + iniciar(dto: IniciarCheckoutDto): ResumoCheckout
+    + consultarCep(cep: string): EnderecoEntrega
+    + finalizar(dto: FinalizarCheckoutDto): CobrancaPixResposta
+  }
+
+  class IniciarCheckoutDto <<DTO>> {
+    + anuncioIds: UUID [1..*]
+  }
+  class FinalizarCheckoutDto <<DTO>> {
+    + anuncioIds: UUID [1..*]
+    + endereco: EnderecoEntrega
+  }
+  class ResumoCheckout <<DTO>> {
+    + itens: PecaCheckout [1..*]
+    + subtotalCentavos: int
+    + freteCentavos: int
+    + totalCentavos: int
+    + reservaExpiraEm: DateTime
+  }
+  class CobrancaPixResposta <<DTO>> {
+    + pedidoId: UUID
+    + qrCode: string
+    + copiaECola: string
+    + expiraEm: DateTime
+  }
+
+  class CheckoutService <<service>> {
+    - catalogo: CatalogoPort
+    - pedidos: PedidosPort
+    - configuracao: ConfiguracaoPort
+    - pagamento: PagamentoProvider
+    - cep: CepProvider
+    - reservas: ReservaRepository
+    - cobrancas: CobrancaPixRepository
+    - filaExpiracao: FilaExpiracao
+    + iniciar(compradorId: UUID, anuncioIds: UUID[]): ResumoCheckout
+    + finalizar(compradorId: UUID, dto: FinalizarCheckoutDto): CobrancaPixResposta
+    - calcularTotal(itens: PecaCheckout[], freteCentavos: int): int
+  }
+
+  class Reserva <<entity>> {
+    - id: UUID
+    - anuncioId: UUID
+    - compradorId: UUID
+    - pedidoId: UUID [0..1]
+    - expiraEm: DateTime
+    - status: StatusReserva
+    + ativa(agora: DateTime): boolean
+    + vincularPedido(pedidoId: UUID): void
+    + expirar(): void
+  }
+
+  enum StatusReserva {
+    ATIVA
+    CONCLUIDA
+    EXPIRADA
+  }
+
+  class CobrancaPix <<entity>> {
+    - id: UUID
+    - pedidoId: UUID
+    - idExterno: string
+    - qrCode: string
+    - copiaECola: string
+    - valorCentavos: int
+    - expiraEm: DateTime
+    - status: StatusCobranca
+    + estaPendente(): boolean
+    + expirar(): void
+  }
+
+  enum StatusCobranca {
+    PENDENTE
+    CONFIRMADA
+    EXPIRADA
+  }
+
+  class EnderecoEntrega <<value object>> {
+    + cep: string
+    + logradouro: string
+    + numero: string
+    + complemento: string [0..1]
+    + bairro: string
+    + cidade: string
+    + uf: string
+  }
+
+  class ReservaRepository <<repository>> {
+    + salvar(reserva: Reserva): void
+    + buscarAtivas(compradorId: UUID, anuncioIds: UUID[]): Reserva[]
+    + buscarPorIds(ids: UUID[]): Reserva[]
+  }
+  class CobrancaPixRepository <<repository>> {
+    + salvar(cobranca: CobrancaPix): void
+    + buscarPorPedido(pedidoId: UUID): CobrancaPix [0..1]
+  }
+
+  class FilaExpiracao <<produtor BullMQ>> {
+    + agendar(reservaIds: UUID[], executarEm: DateTime): void
+  }
+  class ExpiracaoCheckoutWorker <<worker BullMQ>> {
+    + processar(reservaIds: UUID[]): void
+  }
+
+  together {
+    class PecaIndisponivelException <<exception>> {
+      .. 409: reservada ou vendida ..
+    }
+    class CompraPropriaPecaException <<exception>>
+    class ReservaExpiradaException <<exception>>
+  }
+}
+
+package "app/core" {
+  interface CatalogoPort <<interface>> {
+    + obterPecaParaCheckout(anuncioId: UUID): PecaCheckout
+    + reservarPeca(anuncioId: UUID): boolean
+    + confirmarVenda(anuncioId: UUID): void
+    + liberarPeca(anuncioId: UUID): void
+  }
+  interface PedidosPort <<interface>> {
+    + criarPedido(dados: NovoPedido): PedidoCriado
+    + marcarComoPago(pedidoId: UUID): void
+    + cancelar(pedidoId: UUID): void
+  }
+  interface ConfiguracaoPort <<interface>> {
+    + obterVigente(): ConfiguracaoPlataforma
+  }
+  interface PagamentoProvider <<interface>> {
+    + criarCobranca(pedidoId: UUID, valorCentavos: int, expiraEm: DateTime): CobrancaGerada
+    + validarAssinatura(cabecalhos: Map, corpoBruto: string): boolean
+    + interpretarEvento(corpoBruto: string): EventoPagamento
+  }
+  interface CepProvider <<interface>> {
+    + consultar(cep: string): EnderecoEntrega [0..1]
+  }
+  class PecaCheckout <<DTO>> {
+    + anuncioId: UUID
+    + vendedorId: UUID
+    + titulo: string
+    + precoCentavos: int
+  }
+  class NovoPedido <<DTO>> {
+    + compradorId: UUID
+    + vendedorId: UUID
+    + itens: PecaCheckout [1..*]
+    + freteCentavos: int
+    + comissaoPercentual: Decimal
+    + taxaPixPercentual: Decimal
+    + endereco: EnderecoEntrega
+  }
+  class CobrancaGerada <<DTO>> {
+    + idExterno: string
+    + qrCode: string
+    + copiaECola: string
+    + expiraEm: DateTime
+  }
+}
+
+package "Adaptadores" {
+  class MercadoPagoProvider <<homologação/produção>>
+  class PixSimuladoProvider <<desenvolvimento/testes>>
+  class ViaCepProvider
+}
+
+CarrinhoStore ..> CheckoutController : POST /checkout
+
+CheckoutController "1" --> "1" CheckoutService
+CheckoutController ..> IniciarCheckoutDto : <<use>>
+CheckoutController ..> FinalizarCheckoutDto : <<use>>
+CheckoutService ..> ResumoCheckout : <<create>>
+CheckoutService ..> CobrancaPixResposta : <<create>>
+
+CheckoutService "1" --> "1" CatalogoPort
+CheckoutService "1" --> "1" PedidosPort
+CheckoutService "1" --> "1" ConfiguracaoPort
+CheckoutService "1" --> "1" PagamentoProvider
+CheckoutService "1" --> "1" CepProvider
+CheckoutService "1" --> "1" ReservaRepository
+CheckoutService "1" --> "1" CobrancaPixRepository
+CheckoutService "1" --> "1" FilaExpiracao
+CheckoutService ..> PecaIndisponivelException : <<throw>>
+CheckoutService ..> CompraPropriaPecaException : <<throw>>
+CheckoutService ..> ReservaExpiradaException : <<throw>>
+CheckoutService ..> NovoPedido : <<create>>
+
+ExpiracaoCheckoutWorker --> "1" ReservaRepository
+ExpiracaoCheckoutWorker --> "1" CatalogoPort
+ExpiracaoCheckoutWorker --> "1" PedidosPort
+ExpiracaoCheckoutWorker --> "1" CobrancaPixRepository
+
+ReservaRepository ..> Reserva
+CobrancaPixRepository ..> CobrancaPix
+Reserva --> "1" StatusReserva
+CobrancaPix --> "1" StatusCobranca
+FinalizarCheckoutDto *-- "1" EnderecoEntrega
+
+PagamentoProvider ..> CobrancaGerada
+NovoPedido o-- "1..*" PecaCheckout
+
+MercadoPagoProvider ..|> PagamentoProvider
+PixSimuladoProvider ..|> PagamentoProvider
+ViaCepProvider ..|> CepProvider
+
+note as N1
+  reservarPeca executa
+  UPDATE ... SET status = 'RESERVADO'
+  WHERE id = :id AND status = 'DISPONIVEL'
+  e devolve false se 0 linhas forem afetadas.
+end note
+N1 .. CatalogoPort
+@enduml
