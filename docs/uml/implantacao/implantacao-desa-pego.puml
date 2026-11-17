@@ -2,25 +2,34 @@
 !include ../_estilo.iuml
 set separator none
 title Desa Pego · Diagrama de implantação (infraestrutura planejada de produção)\n<size:11>AWS sa-east-1 · Docker · ECS Fargate · Cloudflare (ADR-007 e seções 4.4, 7 e 9 da arquitetura)</size>
-skinparam nodesep 30
-skinparam ranksep 50
+skinparam nodesep 34
+skinparam ranksep 46
+skinparam linetype polyline
+skinparam ArrowFontSize 10
+skinparam ArrowFontColor #555555
 
-' ================= Cliente =================
+' Nós externos (não hospedados pela aplicação) com borda tracejada
+skinparam node<<externo>> {
+  BorderStyle dashed
+  BackgroundColor #FFFFFF
+}
+
+' ================= 1. Cliente =================
 node "Dispositivo do usuário\n«device»" as DEV {
   node "Navegador web\n«execution environment»" as BROWSER {
     artifact "Aplicação React\n(bundle JS do Next.js\n+ app/core/pricing)" as ART_BUNDLE
   }
 }
 
-' ================= Borda (externo) =================
-node "Cloudflare\n«serviço externo · CDN/WAF»" as CF {
+' ================= 2. Borda =================
+node "Cloudflare\nCDN e WAF" <<externo>> as CF {
   component "DNS + proxy reverso" as CF_PROXY
   component "Cache de páginas\ne fotos" as CF_CACHE
-  component "WAF / proteção\ncontra bots" as CF_WAF
+  component "WAF e proteção\ncontra bots" as CF_WAF
 }
 
-' ================= AWS =================
-node "AWS · região sa-east-1 (São Paulo)\n«cloud»" as AWS {
+' ================= 3. AWS =================
+node "AWS · região sa-east-1 (São Paulo)\n«cloud · hospedado pela aplicação»" as AWS {
 
   node "Application Load Balancer\n«ALB · multi-AZ»" as ALB
 
@@ -30,14 +39,14 @@ node "AWS · região sa-east-1 (São Paulo)\n«cloud»" as AWS {
         artifact "desapego-web\n(Next.js · SSR/ISR)" as ART_WEB
       }
     }
-    node "Serviço api\n«tarefa Fargate · N réplicas»" as T_API {
-      node "Contêiner Docker " as C_API {
-        artifact "desapego-api\n(NestJS · Node.js 20\n5 módulos + app/core)" as ART_API
-      }
-    }
     node "Serviço worker\n«tarefa Fargate» (hipótese H1)" as T_WRK {
       node "Contêiner Docker  " as C_WRK {
         artifact "desapego-api em modo worker\n(consumidores BullMQ)" as ART_WRK
+      }
+    }
+    node "Serviço api\n«tarefa Fargate · N réplicas»" as T_API {
+      node "Contêiner Docker " as C_API {
+        artifact "desapego-api\n(NestJS · Node.js 20\n5 módulos + app/core)" as ART_API
       }
     }
   }
@@ -46,7 +55,7 @@ node "AWS · região sa-east-1 (São Paulo)\n«cloud»" as AWS {
     database "PostgreSQL 16\n(desapego)" as DB
   }
   node "Amazon ElastiCache" as EC {
-    database "Redis 7\n(cache, TTL de reservas,\nrate limiting, filas BullMQ)" as RDS_REDIS
+    database "Redis 7\ncache, TTL de reservas,\nrate limiting, filas BullMQ" as RDS_REDIS
   }
   node "Amazon S3\n«versionamento + replicação»" as S3N {
     artifact "bucket de fotos das peças" as ART_S3
@@ -55,43 +64,58 @@ node "AWS · região sa-east-1 (São Paulo)\n«cloud»" as AWS {
   node "Amazon CloudWatch Logs" as CWL
 }
 
-' ================= Externos =================
-node "Mercado Pago\n«serviço externo»" as MP {
+' ================= 4. Serviços externos =================
+node "Mercado Pago\nprovedor Pix" <<externo>> as MP {
   component "API Pix\n(cobrança, QR Code)" as MP_API
   component "Notificações\n(webhook)" as MP_WH
 }
-node "ViaCEP\n«serviço externo»" as VIACEP
-node "Sentry + Grafana Cloud\n«serviços externos de monitoramento»" as MON
+node "ViaCEP\nconsulta de CEP" <<externo>> as VIACEP
+node "Sentry + Grafana Cloud\nerros e métricas" <<externo>> as MON
 
-' ================= Comunicação =================
-BROWSER --> CF_PROXY : HTTPS (TLS 1.2+, HSTS)
-BROWSER ..> ART_S3 : HTTPS PUT\n(URL pré-assinada)
-CF_PROXY --> ALB : HTTPS
-CF_CACHE ..> ART_S3 : origem das fotos\n(HTTPS GET)
+' ---------- Ordem horizontal (somente layout) ----------
+CF_PROXY -[hidden]right- CF_CACHE
+CF_CACHE -[hidden]right- CF_WAF
+T_WEB -[hidden]right- T_WRK
+T_WRK -[hidden]right- T_API
+RDS -[hidden]right- EC
+EC -[hidden]right- S3N
+SM -[hidden]down- CWL
+MP -[hidden]down- VIACEP
+CWL -[hidden]down- MON
 
-ALB --> T_WEB : HTTP (rede privada)\npáginas
-ALB --> T_API : HTTP (rede privada)\n/api e /webhooks
-T_WEB --> ALB : REST/JSON (SSR → API)
+' ---------- Caminho da requisição (de cima para baixo) ----------
+BROWSER -down-> CF_PROXY : HTTPS (TLS 1.2+, HSTS)
+CF_PROXY -down-> ALB : HTTPS
+ALB -down-> T_WEB : HTTP (rede privada)\npáginas
+ALB -down-> T_API : HTTP (rede privada)\n/api e /webhooks
+T_WEB -[norank]-> ALB : REST/JSON\n(SSR chama a API, H2)
 
-T_API --> DB : TCP 5432 · Prisma (TLS)
-T_API --> RDS_REDIS : TCP 6379
-T_API --> ART_S3 : HTTPS · AWS SDK
-T_API --> MP_API : HTTPS REST
-T_API --> VIACEP : HTTPS REST
-T_WRK --> DB : TCP 5432 · Prisma (TLS)
-T_WRK --> RDS_REDIS : TCP 6379 · BullMQ
+' ---------- Acesso a dados ----------
+T_API -down-> DB : TCP 5432 · Prisma (TLS)
+T_API -down-> RDS_REDIS : TCP 6379
+T_API -down-> ART_S3 : HTTPS · AWS SDK\n(URLs pré-assinadas)
+T_WRK -down-> DB : TCP 5432 · Prisma (TLS)
+T_WRK -down-> RDS_REDIS : TCP 6379 · BullMQ
 
-MP_WH --> CF_PROXY : HTTPS POST\n(webhook assinado)
+' ---------- Integrações externas ----------
+T_API -right-> MP_API : HTTPS REST\n(cobrança Pix)
+T_API -right-> VIACEP : HTTPS REST
+MP_WH -[norank]-> CF_PROXY : HTTPS POST\n(webhook assinado)
 
-ECS ..> SM : leitura de segredos (IAM)
-ECS ..> CWL : logs dos contêineres
-ECS ..> MON : erros e métricas (SDK)
+' ---------- Fotos: upload direto e entrega pela CDN ----------
+BROWSER .[norank].> ART_S3 : HTTPS PUT\n(URL pré-assinada)
+CF_CACHE .[norank].> ART_S3 : origem das fotos\n(HTTPS GET)
+
+' ---------- Operação ----------
+ECS .left.> SM : leitura de segredos (IAM)
+ECS .left.> CWL : logs dos contêineres
+ECS .left.> MON : erros e métricas (SDK)
 
 legend bottom right
-  **Hospedado pela aplicação (AWS):** ALB, ECS Fargate, RDS, ElastiCache, S3,
-  Secrets Manager e CloudWatch. Provisionados por Terraform.
-  **Externos:** navegador do usuário, Cloudflare, Mercado Pago, ViaCEP,
-  Sentry e Grafana Cloud.
+  **Hospedado pela aplicação (AWS, borda contínua):** ALB, ECS Fargate,
+  RDS, ElastiCache, S3, Secrets Manager e CloudWatch. Provisionados por Terraform.
+  **Externos (borda tracejada):** Cloudflare, Mercado Pago, ViaCEP,
+  Sentry e Grafana Cloud. O dispositivo e o navegador são do usuário.
   ----
   **Hipóteses** (não definidas na documentação):
   H1. Workers BullMQ rodam como serviço ECS separado, com a mesma

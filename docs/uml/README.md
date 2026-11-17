@@ -88,11 +88,11 @@ Todos têm numeração automática das mensagens, separadores (`==`) para as fas
 
 ### Diagrama de componentes
 
-13. Mostra o frontend Next.js, a biblioteca compartilhada `app/core/pricing` e a API NestJS como **um único componente** com duas portas de entrada (REST e webhook Pix). Dentro dela estão os cinco módulos, o núcleo `app/core` com as nove interfaces, os adaptadores dos fornecedores externos e a infraestrutura comum (Prisma, BullMQ, guard JWT). Cada módulo **fornece** as interfaces que implementa (linha sólida até o círculo) e **requer** as de outros módulos (seta tracejada). Fora da API ficam PostgreSQL, Redis, S3, Mercado Pago e ViaCEP.
+13. Mostra a arquitetura em camadas, de cima para baixo: usuário, frontend Next.js, API NestJS, `app/core`, adaptadores e, na base, os serviços de dados e externos. A API é **um único componente** com duas portas de entrada (REST e webhook Pix); dentro dela estão os cinco módulos, o núcleo `app/core` com as nove interfaces, os adaptadores dos fornecedores externos e a infraestrutura comum (Prisma, BullMQ, guard JWT). Cada módulo tem uma cor: a linha sólida até o círculo indica a interface que ele **fornece** e a seta tracejada na mesma cor indica a interface que ele **requer**. Assim cada dependência pode ser seguida até o módulo de origem. A biblioteca `app/core/pricing` fica fora da API porque também roda no navegador.
 
 ### Diagrama de implantação
 
-14. Representa o ambiente de produção planejado. O navegador acessa o sistema pelo Cloudflare (proxy, cache e WAF), que encaminha ao ALB na AWS sa-east-1. O cluster ECS Fargate roda contêineres Docker com o frontend Next.js, a API NestJS e os workers BullMQ. Os dados ficam em RDS PostgreSQL multi-AZ, ElastiCache Redis e S3; segredos no Secrets Manager e logs no CloudWatch. Mercado Pago, ViaCEP, Sentry e Grafana Cloud aparecem como nós externos. A legenda separa o que é hospedado pela aplicação do que é externo e lista as hipóteses.
+14. Representa o ambiente de produção planejado, na ordem em que uma requisição percorre a infraestrutura: dispositivo do usuário → Cloudflare (proxy, cache e WAF) → ALB na AWS sa-east-1 → cluster ECS Fargate (serviços web, worker e api, cada um em contêiner Docker) → dados (RDS PostgreSQL multi-AZ, ElastiCache Redis e S3). Secrets Manager e CloudWatch ficam à esquerda, junto do Sentry e do Grafana Cloud (observabilidade); Mercado Pago e ViaCEP ficam à direita, ao lado do serviço api, que os chama. Nós externos têm borda tracejada e os hospedados pela aplicação, borda contínua. A legenda lista as hipóteses.
 
 ## Principais decisões de modelagem
 
