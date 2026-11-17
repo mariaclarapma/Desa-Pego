@@ -1,130 +1,51 @@
 @startuml
 !include ../_estilo.iuml
 set separator none
-title Desa Pego · Diagrama de implantação (infraestrutura planejada de produção)\n<size:11>AWS sa-east-1 · Docker · ECS Fargate · Cloudflare (ADR-007 e seções 4.4, 7 e 9 da arquitetura)</size>
-skinparam nodesep 34
-skinparam ranksep 46
-skinparam linetype polyline
-skinparam ArrowFontSize 10
-skinparam ArrowFontColor #555555
+title Desa Pego · Diagrama de implantação\n<size:11>Infraestrutura planejada para produção (ainda não implantada)</size>
+skinparam nodesep 35
+skinparam ranksep 45
 
-' Nós externos (não hospedados pela aplicação) com borda tracejada
-skinparam node<<externo>> {
-  BorderStyle dashed
-  BackgroundColor #FFFFFF
+node "Dispositivo do usuário" as DEV {
+  node "Navegador" as BROWSER
 }
 
-' ================= 1. Cliente =================
-node "Dispositivo do usuário\n«device»" as DEV {
-  node "Navegador web\n«execution environment»" as BROWSER {
-    artifact "Aplicação React\n(bundle JS do Next.js\n+ app/core/pricing)" as ART_BUNDLE
+node "Cloudflare\n(CDN e firewall)" as CF <<externo>>
+
+node "AWS · São Paulo (sa-east-1)" as AWS <<planejado>> {
+  node "Load Balancer (ALB)" as ALB
+  node "ECS Fargate" as ECS {
+    artifact "contêiner Docker\nfrontend (Next.js)" as WEB
+    artifact "contêiner Docker\nbackend (NestJS + workers)" as BACK
   }
+  database "RDS\nPostgreSQL" as RDS
+  database "ElastiCache\nRedis" as REDIS
+  storage "S3\nfotos das peças" as S3
 }
 
-' ================= 2. Borda =================
-node "Cloudflare\nCDN e WAF" <<externo>> as CF {
-  component "DNS + proxy reverso" as CF_PROXY
-  component "Cache de páginas\ne fotos" as CF_CACHE
-  component "WAF e proteção\ncontra bots" as CF_WAF
-}
+node "Mercado Pago" as MP <<externo>>
+node "ViaCEP" as CEP <<externo>>
 
-' ================= 3. AWS =================
-node "AWS · região sa-east-1 (São Paulo)\n«cloud · hospedado pela aplicação»" as AWS {
+WEB -[hidden]right- BACK
+RDS -[hidden]right- REDIS
+REDIS -[hidden]right- S3
+MP -[hidden]down- CEP
 
-  node "Application Load Balancer\n«ALB · multi-AZ»" as ALB
+BROWSER -down-> CF : HTTPS
+CF -down-> ALB : HTTPS
+ALB -down-> WEB
+ALB -down-> BACK
+BACK -down-> RDS
+BACK -down-> REDIS
+BACK -down-> S3
+BACK -right-> MP : cobrança Pix
+BACK -right-> CEP : consulta CEP
+MP -[norank]-> CF : webhook
+BROWSER .[norank].> S3 : envio de fotos\n(URL pré-assinada)
 
-  node "Cluster AWS ECS Fargate" as ECS {
-    node "Serviço web\n«tarefa Fargate · N réplicas»" as T_WEB {
-      node "Contêiner Docker" as C_WEB {
-        artifact "desapego-web\n(Next.js · SSR/ISR)" as ART_WEB
-      }
-    }
-    node "Serviço worker\n«tarefa Fargate» (hipótese H1)" as T_WRK {
-      node "Contêiner Docker  " as C_WRK {
-        artifact "desapego-api em modo worker\n(consumidores BullMQ)" as ART_WRK
-      }
-    }
-    node "Serviço api\n«tarefa Fargate · N réplicas»" as T_API {
-      node "Contêiner Docker " as C_API {
-        artifact "desapego-api\n(NestJS · Node.js 20\n5 módulos + app/core)" as ART_API
-      }
-    }
-  }
-
-  node "Amazon RDS\n«multi-AZ · backup PITR 14 dias»" as RDS {
-    database "PostgreSQL 16\n(desapego)" as DB
-  }
-  node "Amazon ElastiCache" as EC {
-    database "Redis 7\ncache, TTL de reservas,\nrate limiting, filas BullMQ" as RDS_REDIS
-  }
-  node "Amazon S3\n«versionamento + replicação»" as S3N {
-    artifact "bucket de fotos das peças" as ART_S3
-  }
-  node "AWS Secrets Manager" as SM
-  node "Amazon CloudWatch Logs" as CWL
-}
-
-' ================= 4. Serviços externos =================
-node "Mercado Pago\nprovedor Pix" <<externo>> as MP {
-  component "API Pix\n(cobrança, QR Code)" as MP_API
-  component "Notificações\n(webhook)" as MP_WH
-}
-node "ViaCEP\nconsulta de CEP" <<externo>> as VIACEP
-node "Sentry + Grafana Cloud\nerros e métricas" <<externo>> as MON
-
-' ---------- Ordem horizontal (somente layout) ----------
-CF_PROXY -[hidden]right- CF_CACHE
-CF_CACHE -[hidden]right- CF_WAF
-T_WEB -[hidden]right- T_WRK
-T_WRK -[hidden]right- T_API
-RDS -[hidden]right- EC
-EC -[hidden]right- S3N
-SM -[hidden]down- CWL
-MP -[hidden]down- VIACEP
-CWL -[hidden]down- MON
-
-' ---------- Caminho da requisição (de cima para baixo) ----------
-BROWSER -down-> CF_PROXY : HTTPS (TLS 1.2+, HSTS)
-CF_PROXY -down-> ALB : HTTPS
-ALB -down-> T_WEB : HTTP (rede privada)\npáginas
-ALB -down-> T_API : HTTP (rede privada)\n/api e /webhooks
-T_WEB -[norank]-> ALB : REST/JSON\n(SSR chama a API, H2)
-
-' ---------- Acesso a dados ----------
-T_API -down-> DB : TCP 5432 · Prisma (TLS)
-T_API -down-> RDS_REDIS : TCP 6379
-T_API -down-> ART_S3 : HTTPS · AWS SDK\n(URLs pré-assinadas)
-T_WRK -down-> DB : TCP 5432 · Prisma (TLS)
-T_WRK -down-> RDS_REDIS : TCP 6379 · BullMQ
-
-' ---------- Integrações externas ----------
-T_API -right-> MP_API : HTTPS REST\n(cobrança Pix)
-T_API -right-> VIACEP : HTTPS REST
-MP_WH -[norank]-> CF_PROXY : HTTPS POST\n(webhook assinado)
-
-' ---------- Fotos: upload direto e entrega pela CDN ----------
-BROWSER .[norank].> ART_S3 : HTTPS PUT\n(URL pré-assinada)
-CF_CACHE .[norank].> ART_S3 : origem das fotos\n(HTTPS GET)
-
-' ---------- Operação ----------
-ECS .left.> SM : leitura de segredos (IAM)
-ECS .left.> CWL : logs dos contêineres
-ECS .left.> MON : erros e métricas (SDK)
-
-legend bottom right
-  **Hospedado pela aplicação (AWS, borda contínua):** ALB, ECS Fargate,
-  RDS, ElastiCache, S3, Secrets Manager e CloudWatch. Provisionados por Terraform.
-  **Externos (borda tracejada):** Cloudflare, Mercado Pago, ViaCEP,
-  Sentry e Grafana Cloud. O dispositivo e o navegador são do usuário.
-  ----
-  **Hipóteses** (não definidas na documentação):
-  H1. Workers BullMQ rodam como serviço ECS separado, com a mesma
-       imagem da API (a doc só diz "workers para tarefas assíncronas").
-  H2. O SSR do Next.js chama a API pelo ALB; portas internas e
-       sub-redes da VPC não foram definidas.
-  H3. O registro de imagens Docker (ex.: Amazon ECR) não foi definido.
-  Homologação espelha este desenho em menor escala, com Mercado Pago
-  em sandbox; no ambiente local tudo roda no Docker Compose
-  (PostgreSQL, Redis, MinIO) com o PixSimuladoProvider.
+legend bottom left
+  O que existe hoje: só a CI no GitHub Actions, que sobe PostgreSQL e Redis
+  temporários para os testes. O deploy ainda está "a fazer" no README.
+  Para desenvolver localmente, o plano é usar Docker Compose
+  (PostgreSQL, Redis e MinIO no lugar do S3) e o Pix simulado.
 endlegend
 @enduml

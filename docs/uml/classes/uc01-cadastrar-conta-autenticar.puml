@@ -3,179 +3,71 @@
 set separator none
 title UC01 · Cadastrar conta e autenticar-se — Diagrama de classes\n<size:11>Requisito 001 · Módulo 01 (Contas e Perfil)</size>
 hide empty members
-left to right direction
-skinparam nodesep 40
-skinparam ranksep 50
 
-package "Módulo 01 · Contas (app/contas)" {
-
-  class AuthController <<controller>> {
-    - authService: AuthService
-    + cadastrar(dto: CadastroDto): UsuarioResposta
-    + login(dto: LoginDto): TokenAcesso
-    + renovarToken(cookieRefresh: string): TokenAcesso
-    + logout(cookieRefresh: string): void
-  }
-
-  together {
-    class CadastroDto <<DTO>> {
-      + nome: string
-      + email: string
-      + cpf: string
-      + senha: string
-    }
-    class LoginDto <<DTO>> {
-      + email: string
-      + senha: string
-    }
-    class UsuarioResposta <<DTO>> {
-      + id: UUID
-      + nome: string
-      + email: string
-      + perfil: PerfilAcesso
-    }
-    class TokenAcesso <<DTO>> {
-      + accessToken: string
-      + expiraEmSegundos: int
-    }
-  }
-
-  class AuthService <<service>> {
-    - usuarios: UsuarioRepository
-    - tokensRefresh: RefreshTokenRepository
-    - hashSenha: HashSenhaService
-    - criptografia: CriptografiaCampoService
-    - tokens: TokenService
-    - limitador: LimitadorTentativasLogin
-    + cadastrar(dto: CadastroDto): Usuario
-    + autenticar(email: string, senha: string): ParTokens
-    + renovar(refreshToken: string): ParTokens
-    + encerrarSessao(refreshToken: string): void
-    - garantirUnicidade(email: string, cpfHash: string): void
-  }
-
-  class ParTokens <<value object>> {
-    + accessToken: string
-    + refreshToken: string
-  }
-
-  class Cpf <<value object>> {
-    - digitos: string
-    + {static} criar(valor: string): Cpf
-    + valido(): boolean
-    + normalizado(): string
-    - calcularDigitoVerificador(base: string): int
-  }
-
-  class Usuario <<entity>> {
-    - id: UUID
-    - nome: string
-    - email: string
-    - cpfHash: string
-    - cpfCriptografado: string
-    - senhaHash: string
-    - perfil: PerfilAcesso
-    - criadoEm: DateTime
-    + ehAdmin(): boolean
-  }
-
-  enum PerfilAcesso {
-    USUARIO
-    ADMIN
-  }
-
-  class RefreshToken <<entity>> {
-    - id: UUID
-    - usuarioId: UUID
-    - tokenHash: string
-    - expiraEm: DateTime
-    - revogadoEm: DateTime [0..1]
-    + ativo(agora: DateTime): boolean
-    + revogar(agora: DateTime): void
-  }
-
-  class UsuarioRepository <<repository>> {
-    + buscarPorEmail(email: string): Usuario [0..1]
-    + existePorEmailOuCpfHash(email: string, cpfHash: string): boolean
-    + salvar(usuario: Usuario): Usuario
-  }
-
-  class RefreshTokenRepository <<repository>> {
-    + salvar(token: RefreshToken): void
-    + buscarAtivoPorHash(tokenHash: string): RefreshToken [0..1]
-    + revogar(id: UUID): void
-  }
-
-  class HashSenhaService <<service>> {
-    + gerarHash(senha: string): string
-    + verificar(senha: string, hash: string): boolean
-  }
-
-  class CriptografiaCampoService <<service>> {
-    + criptografar(valor: string): string
-    + descriptografar(cifrado: string): string
-    + hashDeterministico(valor: string): string
-  }
-
-  class TokenService <<service>> {
-    - segredoJwt: string
-    - duracaoAccessSeg: int
-    + emitirAccessToken(usuario: Usuario): string
-    + emitirRefreshToken(): string
-    + hash(token: string): string
-  }
-
-  class LimitadorTentativasLogin <<service>> {
-    - maxTentativas: int
-    - bloqueioSegundos: int
-    + verificarBloqueio(email: string): void
-    + registrarFalha(email: string): void
-    + limpar(email: string): void
-    .. contadores com TTL no Redis ..
-  }
-
-  together {
-    class CpfInvalidoException <<exception>>
-    class ContaDuplicadaException <<exception>>
-    class CredenciaisInvalidasException <<exception>> {
-      .. mensagem genérica: não revela se o e-mail existe ..
-    }
-    class LoginBloqueadoException <<exception>>
-  }
+class AuthController {
+  + cadastrar(nome: string, email: string, cpf: string, senha: string): Usuario
+  + login(email: string, senha: string): string
+  + logout(refreshToken: string): void
 }
 
-AuthController "1" --> "1" AuthService
-AuthController ..> CadastroDto : <<use>>
-AuthController ..> LoginDto : <<use>>
-AuthController ..> UsuarioResposta : <<create>>
-AuthController ..> TokenAcesso : <<create>>
+class AuthService {
+  + cadastrar(nome: string, email: string, cpf: string, senha: string): Usuario
+  + login(email: string, senha: string): string
+  + logout(refreshToken: string): void
+  - validarCpf(cpf: string): boolean
+  - registrarTentativaFalha(email: string): void
+}
 
-AuthService "1" --> "1" UsuarioRepository
-AuthService "1" --> "1" RefreshTokenRepository
-AuthService "1" --> "1" HashSenhaService
-AuthService "1" --> "1" CriptografiaCampoService
-AuthService "1" --> "1" TokenService
-AuthService "1" --> "1" LimitadorTentativasLogin
-AuthService ..> Cpf : <<create>>
-AuthService ..> ParTokens : <<create>>
-AuthService ..> CpfInvalidoException : <<throw>>
-AuthService ..> ContaDuplicadaException : <<throw>>
-AuthService ..> CredenciaisInvalidasException : <<throw>>
-LimitadorTentativasLogin ..> LoginBloqueadoException : <<throw>>
+class Usuario {
+  - id: UUID
+  - nome: string
+  - email: string
+  - cpfHash: string
+  - cpfCriptografado: string
+  - senhaHash: string
+  - perfil: Perfil
+  - criadoEm: DateTime
+}
 
-UsuarioRepository ..> Usuario
-RefreshTokenRepository ..> RefreshToken
-Usuario "1" -- "0..*" RefreshToken : possui >
-Usuario --> "1" PerfilAcesso
+enum Perfil {
+  USUARIO
+  ADMIN
+}
+
+class RefreshToken {
+  - id: UUID
+  - tokenHash: string
+  - expiraEm: DateTime
+  - revogado: boolean
+  + revogar(): void
+}
+
+AuthController --> "1" AuthService
+AuthService ..> Usuario : cria e consulta
+AuthService ..> RefreshToken : cria e revoga
+Usuario "1" -- "0..*" RefreshToken : possui
+Usuario --> "1" Perfil
 
 note as N1
-  senhaHash: Argon2id (nunca devolvido pela API).
-  cpfCriptografado: criptografia de campo.
-  cpfHash: permite rejeitar CPF duplicado
-  sem descriptografar (UNIQUE no banco).
-  O papel de vendedor não é um perfil:
-  é ativado ao cadastrar a chave Pix (Req. 002).
+  Senha guardada com hash Argon2id.
+  CPF criptografado; o cpfHash permite
+  recusar CPF repetido sem descriptografar.
+  E-mail e cpfHash são únicos no banco.
 end note
 N1 .. Usuario
 
+note as N2
+  O login devolve um JWT de curta duração;
+  o refresh token vai num cookie httpOnly.
+  Muitas tentativas erradas bloqueiam o
+  login por um tempo (contador no Redis).
+end note
+N2 .. AuthService
+
+note as N3
+  Não existe perfil "vendedor": a conta
+  passa a vender quando cadastra uma
+  chave Pix (Req. 002).
+end note
+N3 .. Perfil
 @enduml

@@ -3,192 +3,108 @@
 set separator none
 title UC06 · Atualizar entrega do pedido e liberar saldo — Diagrama de classes\n<size:11>Requisitos 013 e 014 · Módulo 05 (Pedidos, Carteira e Administração)</size>
 hide empty members
-left to right direction
-skinparam nodesep 35
-skinparam ranksep 55
 
-package "Módulo 05 · Pedidos e Carteira (app/pedidos)" {
-
-  class PedidoController <<controller>> {
-    + marcarComoEnviado(pedidoId: UUID): PedidoResposta
-    + confirmarRecebimento(pedidoId: UUID): PedidoResposta
-    + listarMinhasCompras(status: StatusPedido [0..1]): PedidoResposta[]
-    + listarMinhasVendas(status: StatusPedido [0..1]): PedidoResposta[]
-  }
-
-  class CarteiraController <<controller>> {
-    + consultarSaldo(): SaldoCarteira
-    + consultarExtrato(): LancamentoCarteira[]
-  }
-
-  class PedidoService <<service>> {
-    - pedidos: PedidoRepository
-    - maquina: MaquinaEstadosPedido
-    - carteira: CarteiraService
-    - transacao: GerenciadorTransacao
-    + marcarComoEnviado(pedidoId: UUID, usuarioId: UUID): Pedido
-    + confirmarRecebimento(pedidoId: UUID, usuarioId: UUID): Pedido
-    + listar(usuarioId: UUID, papel: PapelNoPedido, status: StatusPedido [0..1]): Pedido[]
-  }
-
-  enum PapelNoPedido {
-    COMPRADOR
-    VENDEDOR
-  }
-
-  class PedidoResposta <<DTO>> {
-    + id: UUID
-    + status: StatusPedido
-    + itens: ItemPedido [1..*]
-    + totalCentavos: int
-    + enderecoEntrega: EnderecoEntrega [0..1]
-    .. endereço só para o vendedor do pedido ..
-  }
-
-  class Pedido <<entity>> {
-    - id: UUID
-    - compradorId: UUID
-    - vendedorId: UUID
-    - status: StatusPedido
-    - subtotalCentavos: int
-    - freteCentavos: int
-    - totalCentavos: int
-    - comissaoPercentual: Decimal
-    - taxaPixPercentual: Decimal
-    - enderecoEntrega: EnderecoEntrega
-    - criadoEm: DateTime
-    - enviadoEm: DateTime [0..1]
-    - entregueEm: DateTime [0..1]
-    + ehComprador(usuarioId: UUID): boolean
-    + ehVendedor(usuarioId: UUID): boolean
-    ~ alterarStatus(novo: StatusPedido, em: DateTime): void
-  }
-
-  class ItemPedido <<entity>> {
-    - id: UUID
-    - anuncioId: UUID
-    - tituloPeca: string
-    - precoCentavos: int
-  }
-
-  class EnderecoEntrega <<value object>> {
-    + cep: string
-    + logradouro: string
-    + numero: string
-    + cidade: string
-    + uf: string
-  }
-
-  enum StatusPedido {
-    AGUARDANDO_PAGAMENTO
-    PAGO
-    ENVIADO
-    ENTREGUE
-    CANCELADO
-  }
-
-  class MaquinaEstadosPedido <<domain service>> {
-    - transicoes: Map<StatusPedido, StatusPedido[]>
-    + podeTransicionar(de: StatusPedido, para: StatusPedido): boolean
-    + transicionar(pedido: Pedido, para: StatusPedido): void
-  }
-
-  class CarteiraService <<service>> {
-    - lancamentos: LancamentoRepository
-    + liberarSaldo(pedidoId: UUID): void
-    + consultarSaldo(vendedorId: UUID): SaldoCarteira
-  }
-
-  class LancamentoCarteira <<entity>> {
-    - id: UUID
-    - vendedorId: UUID
-    - pedidoId: UUID
-    - tipo: TipoLancamento
-    - valorCentavos: int
-    - situacao: SituacaoSaldo
-    - criadoEm: DateTime
-    .. imutável (somente inserção) ..
-  }
-
-  enum TipoLancamento {
-    VENDA
-    COMISSAO
-    TAXA_PIX
-    LIBERACAO
-    REPASSE
-  }
-
-  enum SituacaoSaldo {
-    PENDENTE
-    DISPONIVEL
-  }
-
-  class SaldoCarteira <<value object>> {
-    + pendenteCentavos: int
-    + disponivelCentavos: int
-  }
-
-  class PedidoRepository <<repository>> {
-    + buscarPorId(id: UUID): Pedido [0..1]
-    + salvar(pedido: Pedido): void
-    + listarPorComprador(id: UUID, status: StatusPedido [0..1]): Pedido[]
-    + listarPorVendedor(id: UUID, status: StatusPedido [0..1]): Pedido[]
-  }
-
-  class LancamentoRepository <<repository>> {
-    + inserir(lancamentos: LancamentoCarteira[]): void
-    + listarPorPedido(pedidoId: UUID, tipo: TipoLancamento): LancamentoCarteira[]
-    + somarPorSituacao(vendedorId: UUID): SaldoCarteira
-  }
-
-  together {
-    class PedidoNaoEncontradoException <<exception>>
-    class AcessoNegadoException <<exception>> {
-      .. usuário não é dono do pedido → 403 ..
-    }
-    class TransicaoInvalidaException <<exception>> {
-      .. ex.: ENTREGUE antes de ENVIADO → 409 ..
-    }
-  }
+class PedidoController {
+  + marcarComoEnviado(pedidoId: UUID): Pedido
+  + confirmarRecebimento(pedidoId: UUID): Pedido
 }
 
-PedidoController "1" --> "1" PedidoService
-PedidoController ..> PedidoResposta : <<create>>
-CarteiraController "1" --> "1" CarteiraService
-PedidoService "1" --> "1" PedidoRepository
-PedidoService "1" --> "1" MaquinaEstadosPedido
-PedidoService "1" --> "1" CarteiraService
-PedidoService ..> PapelNoPedido
-PedidoService ..> PedidoNaoEncontradoException : <<throw>>
-PedidoService ..> AcessoNegadoException : <<throw>>
-MaquinaEstadosPedido ..> TransicaoInvalidaException : <<throw>>
-MaquinaEstadosPedido ..> Pedido : altera status
+class CarteiraController {
+  + consultarSaldo(): Saldo
+}
 
-PedidoRepository ..> Pedido
+class PedidoService {
+  + marcarComoEnviado(pedidoId: UUID, usuarioId: UUID): Pedido
+  + confirmarRecebimento(pedidoId: UUID, usuarioId: UUID): Pedido
+}
+
+class CarteiraService {
+  + liberarSaldo(pedidoId: UUID): void
+  + consultarSaldo(vendedorId: UUID): Saldo
+}
+
+class Pedido {
+  - id: UUID
+  - compradorId: UUID
+  - vendedorId: UUID
+  - status: StatusPedido
+  - freteCentavos: int
+  - totalCentavos: int
+  - comissaoPercentual: Decimal
+  - enderecoEntrega: string
+  + mudarStatus(novo: StatusPedido): void
+  - transicaoValida(novo: StatusPedido): boolean
+}
+
+class ItemPedido {
+  - anuncioId: UUID
+  - titulo: string
+  - precoCentavos: int
+}
+
+enum StatusPedido {
+  AGUARDANDO_PAGAMENTO
+  PAGO
+  ENVIADO
+  ENTREGUE
+  CANCELADO
+}
+
+class LancamentoCarteira {
+  - id: UUID
+  - vendedorId: UUID
+  - pedidoId: UUID
+  - tipo: TipoLancamento
+  - valorCentavos: int
+  - situacao: SituacaoSaldo
+  - criadoEm: DateTime
+}
+
+enum TipoLancamento {
+  VENDA
+  COMISSAO
+  TAXA_PIX
+  LIBERACAO
+  REPASSE
+}
+
+enum SituacaoSaldo {
+  PENDENTE
+  DISPONIVEL
+}
+
+class Saldo {
+  + pendenteCentavos: int
+  + disponivelCentavos: int
+}
+
+PedidoController --> "1" PedidoService
+CarteiraController --> "1" CarteiraService
+PedidoService --> "1" CarteiraService
+PedidoService ..> Pedido : altera
 Pedido "1" *-- "1..*" ItemPedido : itens
-Pedido *-- "1" EnderecoEntrega
 Pedido --> "1" StatusPedido
-
-CarteiraService "1" --> "1" LancamentoRepository
-CarteiraService ..> SaldoCarteira : <<create>>
-LancamentoRepository ..> LancamentoCarteira
-Pedido "1" -- "0..*" LancamentoCarteira : gera >
+Pedido "1" -- "0..*" LancamentoCarteira : gera
+CarteiraService ..> LancamentoCarteira : cria e soma
+CarteiraService ..> Saldo : calcula
 LancamentoCarteira --> "1" TipoLancamento
 LancamentoCarteira --> "1" SituacaoSaldo
 
 note as N1
-  Transições válidas:
-  AGUARDANDO_PAGAMENTO → PAGO | CANCELADO
+  Transições aceitas (máquina de estados):
+  AGUARDANDO_PAGAMENTO → PAGO ou CANCELADO
   PAGO → ENVIADO
   ENVIADO → ENTREGUE
-  Qualquer outra é rejeitada.
+  Só o vendedor marca como enviado e só o
+  comprador confirma o recebimento.
 end note
-N1 .. MaquinaEstadosPedido
+N1 .. Pedido
 
 note as N2
-  liberarSaldo insere dois lançamentos LIBERACAO:
-  −valor em PENDENTE e +valor em DISPONIVEL.
-  Saldo = soma dos lançamentos por situação.
+  O saldo não é um campo editável: é a soma
+  dos lançamentos. Liberar o saldo cria dois
+  lançamentos LIBERACAO (−valor PENDENTE e
+  +valor DISPONIVEL), sem alterar os antigos.
 end note
 N2 .. CarteiraService
 @enduml

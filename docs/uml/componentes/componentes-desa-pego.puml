@@ -1,151 +1,49 @@
 @startuml
 !include ../_estilo.iuml
 set separator none
-title Desa Pego · Diagrama de componentes (arquitetura geral)\n<size:11>Monolito modular NestJS: 5 módulos que só conversam pelas interfaces de app/core (ADR-001)</size>
+title Desa Pego · Diagrama de componentes\n<size:11>Monolito modular: uma API NestJS dividida em 5 módulos (ADR-001)</size>
 skinparam componentStyle uml2
-skinparam nodesep 34
-skinparam ranksep 46
-skinparam linetype polyline
-skinparam ArrowFontSize 10
-skinparam ArrowFontColor #555555
+skinparam nodesep 30
+skinparam ranksep 45
 
-' Cores por módulo: as setas de dependência têm a cor do módulo que as origina.
-!$m1 = "#2B6CB0"
-!$m2 = "#2F855A"
-!$m3 = "#6B46C1"
-!$m4 = "#C05621"
-!$m5 = "#B83280"
-!$cinza = "#9A9A9A"
+actor Usuário as USR
 
-actor "Usuário\n(comprador, vendedor, admin)" as USR
+component "Frontend\n(Next.js)" as FE <<em desenvolvimento>>
 
-' ===================== Frontend =====================
-component "Frontend Web  «Next.js · TypeScript»" as FE {
-  component "Páginas públicas\nvitrine e peça (SSR/ISR)" as FE_PUB
-  component "Carrinho e checkout\n(estado em Zustand)" as FE_CHK
-  component "Área do comprador\nminhas compras" as FE_COMP
-  component "Área do vendedor\nanúncios, simulador, carteira" as FE_VEND
-  component "Painel do admin\ncomissão, repasse, moderação" as FE_ADM
-  component "Cliente da API\n(TanStack Query)" as FE_API
+component "API Desa Pego (NestJS)" as API <<planejado>> {
+  component "01 · Contas e Perfil" as M1
+  component "02 · Anúncios e Simulador" as M2
+  component "03 · Catálogo" as M3
+  component "04 · Carrinho, Checkout e Pix" as M4
+  component "05 · Pedidos, Carteira e Admin" as M5
+  component "app/core\n<size:11>interfaces entre os módulos (ex.: CatalogoPort,</size>\n<size:11>PedidosPort, CarteiraPort, PagamentoProvider)</size>\n<size:11>e cálculo de preço (pricing)</size>" as CORE
 }
 
-component "app/core/pricing\n«biblioteca compartilhada»\nmesmo cálculo no front e no back\n(ADR-002)" as PRICING
+database "PostgreSQL" as PG
+database "Redis\n(cache, reservas e filas)" as REDIS
+cloud "Amazon S3\n(fotos)" as S3
+cloud "Mercado Pago\n(Pix)" as MP
+cloud "ViaCEP" as CEP
 
-' ===================== API =====================
-component "API Desa Pego  «NestJS · monolito modular · um único processo»" as API {
-  portin "REST/JSON\n(OpenAPI)" as P_REST
-  portin "Webhook Pix\n(HTTPS)" as P_WH
-
-  component "Módulo 01\nContas e Perfil\n<size:10>Req. 001–003</size>" as M1 #white;line:2B6CB0;line.bold;text:2B6CB0
-  component "Módulo 02\nAnúncios e Simulador\n<size:10>Req. 004–006</size>" as M2 #white;line:2F855A;line.bold;text:2F855A
-  component "Módulo 03\nCatálogo\n<size:10>Req. 007–009</size>" as M3 #white;line:6B46C1;line.bold;text:6B46C1
-  component "Módulo 04\nCarrinho, Checkout e Pix\n<size:10>Req. 010–012</size>" as M4 #white;line:C05621;line.bold;text:C05621
-  component "Módulo 05\nPedidos, Carteira e Admin\n<size:10>Req. 013–015</size>" as M5 #white;line:B83280;line.bold;text:B83280
-
-  component "app/core  «interfaces compartilhadas (portas)»" as CORE {
-    interface "ContasPort" as I_CONTAS
-    interface "ArmazenamentoArquivos" as I_ARM
-    interface "AnunciosPort" as I_ANUN
-    interface "CatalogoPort" as I_CAT
-    interface "CepProvider" as I_CEP
-    interface "PagamentoProvider" as I_PAG
-    interface "PedidosPort" as I_PED
-    interface "CarteiraPort" as I_CART
-    interface "ConfiguracaoPort" as I_CONF
-  }
-
-  component "Adaptadores de fornecedores externos" as ADP {
-    component "S3Armazenamento\nProvider" as A_S3
-    component "ViaCep\nProvider" as A_CEP
-    component "MercadoPago\nProvider\n<size:10>homologação/produção</size>" as A_MP
-    component "PixSimulado\nProvider\n<size:10>desenvolvimento/testes</size>" as A_SIM
-  }
-
-  component "Infraestrutura comum\nPrismaService · filas e workers BullMQ · guard JWT\n<size:10>usada por todos os módulos, cada um só com as próprias tabelas</size>" as INFRA
-}
-
-' ===================== Serviços de dados e externos =====================
-storage "Amazon S3\nfotos das peças" as S3
-cloud "ViaCEP\n«externo»" as VIACEP
-cloud "Mercado Pago\n«externo»" as MP
-database "PostgreSQL 16\nfonte da verdade e\nlivro-razão" as PG
-database "Redis 7\ncache, TTL de reservas,\nrate limiting e filas" as REDIS
-
-' ---------- Ordem horizontal dos módulos (somente layout) ----------
+' ordem dos módulos na tela
 M1 -[hidden]right- M2
 M2 -[hidden]right- M3
 M3 -[hidden]right- M4
 M4 -[hidden]right- M5
 
-' ---------- Usuário e frontend ----------
 USR -down-> FE : HTTPS
-FE_PUB -down-> FE_API
-FE_CHK -down-> FE_API
-FE_COMP -down-> FE_API
-FE_VEND -down-> FE_API
-FE_ADM -down-> FE_API
-FE_VEND .left.> PRICING : <<use>>
-FE_API -down-> P_REST : REST/JSON
+FE -down-> API : REST/JSON
+FE .[norank].> CORE : usa o mesmo\ncálculo de preço
 
-' ---------- Entradas da API ----------
-P_REST -down-> M1
-P_REST -down-> M2
-P_REST -down-> M3
-P_REST -down-> M4
-P_REST -down-> M5
-MP -[norank]-> P_WH : notificação de pagamento
-P_WH -down-> M4
+M1 .down.> CORE
+M2 .down.> CORE
+M3 .down.> CORE
+M4 .down.> CORE
+M5 .down.> CORE
 
-' ---------- Interfaces fornecidas (linha sólida = o módulo implementa) ----------
-M1 -[$m1]- I_CONTAS
-M2 -[$m2]- I_ANUN
-M3 -[$m3]- I_CAT
-M5 -[$m5]- I_PED
-M5 -[$m5]- I_CART
-M5 -[$m5]- I_CONF
-
-' ---------- Interfaces requeridas (seta tracejada na cor do módulo que usa) ----------
-M2 .[$m2].> I_CONTAS
-M2 .[$m2].> I_ARM
-M2 .[$m2].> I_CONF
-M3 .[$m3].> I_CONTAS
-M3 .[$m3].> I_ANUN
-M4 .[$m4].> I_CAT
-M4 .[$m4].> I_CEP
-M4 .[$m4].> I_PAG
-M4 .[$m4].> I_PED
-M4 .[$m4].> I_CART
-M4 .[$m4].> I_CONF
-M2 .[$m2].> PRICING : <<use>>
-M5 .[$m5].> PRICING : <<use>>
-
-' ---------- Adaptadores realizam as interfaces de fornecedor ----------
-I_ARM -down- A_S3
-I_CEP -down- A_CEP
-I_PAG -down- A_MP
-I_PAG -down- A_SIM
-
-' ---------- Comunicação com serviços externos e de dados ----------
-' norank: a ligação não altera a hierarquia do layout (evita jogar o frontend para a lateral)
-A_S3 -down-> S3 : AWS SDK
-A_CEP -down-> VIACEP : REST
-A_MP -down-> MP : REST (cobrança Pix)
-INFRA -down-> PG : Prisma (SQL)
-INFRA -down-> REDIS : cache e BullMQ
-FE_VEND .[#9A9A9A,norank].> S3 : PUT direto\n(URL pré-assinada)
-
-
-legend bottom right
-  |= Elemento |= Significado |
-  | linha sólida até ○ | o módulo **fornece** (implementa) a interface |
-  | seta tracejada | o módulo **requer** a interface (cor = módulo que usa) |
-  | seta sólida | comunicação em tempo de execução |
-  |<color:#2B6CB0>■</color> Módulo 01 |<color:#2F855A>■</color> Módulo 02 |
-  |<color:#6B46C1>■</color> Módulo 03 |<color:#C05621>■</color> Módulo 04 |
-  |<color:#B83280>■</color> Módulo 05 | |
-  Os cinco módulos são pacotes NestJS do mesmo processo
-  (monolito modular), não serviços independentes. Um módulo
-  não acessa tabelas de outro: usa só as interfaces de app/core,
-  que são mockadas nos testes de cada módulo.
-endlegend
+API -down-> PG
+API -down-> REDIS
+API -down-> S3 : fotos\n(módulo 02)
+API <-down-> MP : cobrança Pix\ne webhook\n(módulo 04)
+API -down-> CEP : CEP\n(módulo 04)
 @enduml

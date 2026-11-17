@@ -1,133 +1,61 @@
 @startuml
 !include ../_estilo.iuml
 title UC06 · Atualizar entrega do pedido e liberar saldo — Diagrama de sequência\n<size:11>Requisitos 013 e 014 · Módulo 05 (Pedidos, Carteira e Administração)</size>
-autonumber "<b>0."
+autonumber
 hide footbox
 
-actor "Vendedor" as V
-actor "Comprador" as U
-participant "Frontend\n(Next.js)" as FE
-box "API NestJS · Módulo 05" #FAFAFA
-  participant ":PedidoController" as PC
-  participant ":PedidoService" as PS
-  participant ":MaquinaEstadosPedido" as M
-  participant ":PedidoRepository" as PR
-  participant ":CarteiraController" as CTC
-  participant ":CarteiraService" as CS
-  participant ":LancamentoRepository" as LR
-end box
-database "PostgreSQL" as PG
+actor Vendedor
+actor Comprador
+participant "Frontend" as FE
+participant ":PedidoController" as C
+participant ":PedidoService" as S
+participant ":Pedido" as P
+participant ":CarteiraController" as CC
+participant ":CarteiraService" as CS
+database "Banco de dados" as DB
 
-note over V, FE : Usuários autenticados (JWT). Posse do pedido validada no backend;\no frontend apenas esconde os botões.
-
-== Vendedor marca o pedido como enviado ==
-V -> FE : "Marcar como enviado"
-activate FE
-FE -> PC : PATCH /pedidos/{id}/envio
-activate PC
-PC -> PS : marcarComoEnviado(pedidoId, usuarioId)
-activate PS
-PS -> PR : buscarPorId(pedidoId)
-PR -> PG : SELECT pedido
-PR --> PS : Pedido [0..1]
-break pedido inexistente
-  PS --> PC : PedidoNaoEncontradoException
-  PC --> FE : 404 Not Found
-end
+== Vendedor envia a peça ==
+Vendedor -> FE : clica em "Marcar como enviado"
+FE -> C : marcarComoEnviado(pedidoId)
+C -> S : marcarComoEnviado(pedidoId, usuarioId)
+S -> DB : busca o pedido
 alt usuário não é o vendedor do pedido
-  PS --> PC : AcessoNegadoException
-  PC --> FE : 403 Forbidden
-else usuário é o vendedor
-  PS -> M : transicionar(pedido, ENVIADO)
-  activate M
-  M -> M : podeTransicionar(status atual, ENVIADO)
-  alt status atual diferente de PAGO
-    M --> PS : TransicaoInvalidaException
-    PS --> PC : TransicaoInvalidaException
-    PC --> FE : 409 Conflict "Transição inválida"
-  else status atual = PAGO
-    M -> M : pedido.alterarStatus(ENVIADO, agora)
-    M --> PS : ok
-    deactivate M
-    PS -> PR : salvar(pedido)
-    PR -> PG : UPDATE pedido SET status = 'ENVIADO'
-    PS --> PC : Pedido
-    PC --> FE : 200 OK PedidoResposta (com endereço de entrega)
+  S --> FE : erro "Acesso negado"
+else é o vendedor
+  S -> P : mudarStatus(ENVIADO)
+  alt status atual não é PAGO
+    P --> S : transição inválida
+    S --> FE : erro "Pedido ainda não foi pago"
+  else status atual é PAGO
+    S -> DB : salva pedido ENVIADO
+    S --> FE : pedido enviado
   end
 end
-deactivate PS
-deactivate PC
-FE --> V : status atualizado
-deactivate FE
 
 == Comprador confirma o recebimento ==
-U -> FE : "Confirmar recebimento"
-activate FE
-FE -> PC : PATCH /pedidos/{id}/recebimento
-activate PC
-PC -> PS : confirmarRecebimento(pedidoId, usuarioId)
-activate PS
-PS -> PR : buscarPorId(pedidoId)
-PR --> PS : Pedido [0..1]
-break pedido inexistente
-  PS --> PC : PedidoNaoEncontradoException
-  PC --> FE : 404 Not Found
-end
+Comprador -> FE : clica em "Confirmar recebimento"
+FE -> C : confirmarRecebimento(pedidoId)
+C -> S : confirmarRecebimento(pedidoId, usuarioId)
+S -> DB : busca o pedido
 alt usuário não é o comprador do pedido
-  PS --> PC : AcessoNegadoException
-  PC --> FE : 403 Forbidden
-else usuário é o comprador
-  group transação única no PostgreSQL
-    PS -> M : transicionar(pedido, ENTREGUE)
-    activate M
-    break status atual diferente de ENVIADO
-      M --> PS : TransicaoInvalidaException
-      PS --> PC : TransicaoInvalidaException
-      PC --> FE : 409 Conflict "Transição inválida"
-    end
-    M --> PS : ok
-    deactivate M
-    PS -> PR : salvar(pedido)
-    PR -> PG : UPDATE pedido SET status = 'ENTREGUE'
-    PS -> CS : liberarSaldo(pedidoId)
-    activate CS
-    CS -> LR : listarPorPedido(pedidoId, VENDA)
-    LR -> PG : SELECT lançamentos do pedido
-    LR --> CS : lançamento VENDA (PENDENTE)
-    CS -> LR : inserir([LIBERACAO −valor PENDENTE,\nLIBERACAO +valor DISPONIVEL])
-    LR -> PG : INSERT lancamento_carteira (2 linhas)
-    CS --> PS : ok
-    deactivate CS
+  S --> FE : erro "Acesso negado"
+else é o comprador
+  S -> P : mudarStatus(ENTREGUE)
+  alt status atual não é ENVIADO
+    S --> FE : erro "Transição inválida"
+  else status atual é ENVIADO
+    S -> DB : salva pedido ENTREGUE
+    S -> CS : liberarSaldo(pedidoId)
+    CS -> DB : cria lançamentos LIBERACAO\n(−valor PENDENTE, +valor DISPONIVEL)
+    S --> FE : recebimento confirmado
   end
-  PS --> PC : Pedido
-  PC --> FE : 200 OK PedidoResposta (ENTREGUE, sem endereço)
 end
-deactivate PS
-deactivate PC
-FE --> U : recebimento confirmado
-deactivate FE
 
 opt Vendedor consulta a carteira
-  V -> FE : abre "Carteira"
-  activate FE
-  FE -> CTC : GET /carteira/saldo
-  activate CTC
-  CTC -> CS : consultarSaldo(vendedorId)
-  activate CS
-  CS -> LR : somarPorSituacao(vendedorId)
-  LR -> PG : SELECT SUM(valor_centavos) GROUP BY situacao
-  LR --> CS : SaldoCarteira
-  CS --> CTC : SaldoCarteira (pendente, disponível)
-  deactivate CS
-  CTC --> FE : 200 OK
-  deactivate CTC
-  FE --> V : saldo pendente e disponível
-  deactivate FE
+  Vendedor -> FE : abre a carteira
+  FE -> CC : consultarSaldo()
+  CC -> CS : consultarSaldo(vendedorId)
+  CS -> DB : soma os lançamentos por situação
+  CS --> FE : saldo pendente e disponível
 end
-
-note over CS, PG
-  Nenhum lançamento é alterado: o saldo é a soma do livro-razão.
-  O saldo disponível é depois debitado pelo repasse manual
-  registrado pelo admin (Req. 014), fora deste caso de uso.
-end note
 @enduml

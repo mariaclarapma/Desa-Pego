@@ -1,157 +1,62 @@
 @startuml
 !include ../_estilo.iuml
 title UC04 · Reservar peça no checkout e gerar cobrança Pix — Diagrama de sequência\n<size:11>Requisitos 010 e 011 · Módulo 04 (Carrinho, Checkout e Pix)</size>
-autonumber "<b>0."
+autonumber
 hide footbox
 
-actor "Comprador" as U
-participant "Frontend\n(Next.js + CarrinhoStore)" as FE
-box "API NestJS · Módulo 04" #FAFAFA
-  participant ":CheckoutController" as CC
-  participant ":CheckoutService" as CS
-  participant ":ReservaRepository" as RR
-  participant ":CobrancaPixRepository" as CR
-  participant ":ExpiracaoCheckoutWorker" as W
-end box
-box "app/core (interfaces)" #F0FAF9
-  participant "<<interface>>\n:ConfiguracaoPort" as CONF
-  participant "<<interface>>\n:CatalogoPort" as CAT
-  participant "<<interface>>\n:PedidosPort" as PED
-  participant "<<interface>>\n:CepProvider" as CEP
-  participant "<<interface>>\n:PagamentoProvider" as PAG
-end box
-queue "Fila BullMQ\n(Redis)" as FILA
-participant "ViaCEP\n<<externo>>" as VIACEP
-participant "Mercado Pago\n<<externo>>" as MP
+actor Comprador
+participant "Frontend" as FE
+participant ":CheckoutController" as C
+participant ":CheckoutService" as S
+participant "Módulo 03\n(CatalogoPort)" as M3
+participant "Módulo 05\n(PedidosPort)" as M5
+participant "Mercado Pago\n(PagamentoProvider)" as MP
+participant "ViaCEP" as CEP
+database "Banco de dados" as DB
 
-== Carrinho (sem reserva) ==
-U -> FE : adiciona peça ao carrinho
-activate FE
-alt peça já está no carrinho
-  FE --> U : mantém quantidade 1
-else peça nova no carrinho
-  FE -> FE : CarrinhoStore.adicionar(item)
-  FE --> U : carrinho atualizado
-end
-deactivate FE
-note right of FE : O carrinho não reserva a peça (ADR-003):\noutros compradores ainda a veem disponível.
-
-== Início do checkout: reserva atômica ==
-U -> FE : "Finalizar compra"
-activate FE
-FE -> CC : POST /checkout (IniciarCheckoutDto)
-activate CC
-CC -> CS : iniciar(compradorId, anuncioIds)
-activate CS
-CS -> CONF : obterVigente()
-CONF --> CS : ConfiguracaoPlataforma\n(tempo de reserva, frete fixo, comissão, taxa Pix)
-
-group transação no PostgreSQL
-  loop para cada anuncioId
-    CS -> CAT : obterPecaParaCheckout(anuncioId)
-    CAT --> CS : PecaCheckout
-    break vendedorId = compradorId
-      CS -> CS : rollback
-      CS --> CC : CompraPropriaPecaException
-      CC --> FE : 422 "Você não pode comprar a própria peça"
-    end
-    CS -> CAT : reservarPeca(anuncioId)
-    note right of CAT
-      UPDATE anuncio SET status = 'RESERVADO'
-      WHERE id = :id AND status = 'DISPONIVEL'
-    end note
-    CAT --> CS : reservou (boolean)
-    break 0 linhas afetadas (peça já reservada ou vendida)
-      CS -> CS : rollback das reservas desta tentativa
-      CS --> CC : PecaIndisponivelException
-      CC --> FE : 409 Conflict "Peça indisponível"
-      FE --> U : peça exibida como reservada ou vendida
-    end
-    CS -> RR : salvar(Reserva ATIVA, expiraEm = agora + tempoReserva)
+== Reserva das peças ==
+Comprador -> FE : clica em "Finalizar compra"
+FE -> C : iniciar(anuncioIds)
+C -> S : reservarPecas(compradorId, anuncioIds)
+loop para cada peça do carrinho
+  S -> M3 : reservarPeca(anuncioId)
+  note right of M3 : UPDATE atômico:\nsó reserva se estiver DISPONIVEL
+  break peça já reservada ou vendida
+    S -> M3 : libera as peças já reservadas nesta tentativa
+    S --> FE : erro "Peça indisponível"
   end
+  S -> DB : salva Reserva (prazo padrão de 15 min)
 end
-CS ->> FILA : agendar(reservaIds, executarEm = expiraEm)
-CS -> CS : calcularTotal(itens, freteFixo)
-CS --> CC : ResumoCheckout
-deactivate CS
-CC --> FE : 201 Created (itens, frete fixo, total, prazo da reserva)
-deactivate CC
-FE --> U : resumo com contagem regressiva da reserva
-deactivate FE
+S --> FE : resumo com peças, frete fixo, total e prazo
+FE --> Comprador : mostra o resumo
 
-== Endereço e geração do Pix ==
-U -> FE : informa o CEP
-activate FE
-opt preenchimento automático do endereço
-  FE -> CC : GET /checkout/cep/{cep}
-  activate CC
-  CC -> CEP : consultar(cep)
-  CEP -> VIACEP : GET /ws/{cep}/json
-  VIACEP --> CEP : endereço
-  CEP --> CC : EnderecoEntrega [0..1]
-  CC --> FE : 200 OK (ou 404 se CEP não encontrado)
-  deactivate CC
+== Endereço e pagamento ==
+Comprador -> FE : informa o CEP
+FE -> C : consulta o CEP
+C -> CEP : busca o endereço
+CEP --> C : rua, bairro, cidade e UF
+C --> FE : endereço preenchido
+Comprador -> FE : confirma endereço e pedido
+FE -> C : pagar(anuncioIds, endereco)
+C -> S : gerarCobranca(compradorId, endereco)
+alt reserva expirou
+  S --> FE : erro "Sua reserva expirou"
+else reserva ativa
+  S -> M5 : criarPedido(compradorId, anuncioIds, endereco)
+  note right of M5 : pedido AGUARDANDO_PAGAMENTO,\ncom a comissão vigente guardada
+  M5 --> S : pedidoId
+  S -> MP : criarCobranca(pedidoId, total, expiraEm)
+  MP --> S : QR Code e código copia-e-cola
+  S -> DB : salva CobrancaPix PENDENTE
+  S --> FE : QR Code, copia-e-cola e prazo
+  FE --> Comprador : mostra o Pix para pagar
 end
-U -> FE : completa número e confirma o resumo
-FE -> CC : POST /checkout/pagamento (FinalizarCheckoutDto)
-activate CC
-CC -> CS : finalizar(compradorId, dto)
-activate CS
-CS -> RR : buscarAtivas(compradorId, anuncioIds)
-RR --> CS : Reserva[]
-break alguma reserva expirada ou inexistente
-  CS --> CC : ReservaExpiradaException
-  CC --> FE : 410 Gone "Sua reserva expirou"
-end
-CS -> CAT : obterPecaParaCheckout(anuncioId) [para cada item]
-CAT --> CS : preços lidos do banco (nunca do cache)
-CS -> CS : calcularTotal(itens, freteFixo)
-CS -> PED : criarPedido(NovoPedido)
-activate PED
-note right of PED
-  Pedido AGUARDANDO_PAGAMENTO com
-  comissão e taxa Pix vigentes congeladas.
-end note
-PED --> CS : PedidoCriado (id, totalCentavos)
-deactivate PED
-CS -> RR : vincularPedido(pedidoId) em cada reserva
-CS -> PAG : criarCobranca(pedidoId, totalCentavos, expiraEm = reserva.expiraEm)
-activate PAG
-PAG -> MP : POST cobrança Pix (HTTPS)
-alt provedor indisponível ou erro
-  MP --> PAG : erro
-  PAG --> CS : falha
-  CS -> PED : cancelar(pedidoId)
-  CS --> CC : erro de pagamento
-  CC --> FE : 502 "Não foi possível gerar o Pix, tente novamente"
-else cobrança criada
-  MP --> PAG : id, QR Code, copia-e-cola, expiração
-  PAG --> CS : CobrancaGerada
-  deactivate PAG
-  CS -> CR : salvar(CobrancaPix PENDENTE)
-  CS --> CC : CobrancaPixResposta
-  CC --> FE : 201 Created (QR Code, copia-e-cola, expiraEm)
-  FE --> U : exibe QR Code e prazo de pagamento
-end
-deactivate CS
-deactivate CC
-deactivate FE
 
-== Expiração sem pagamento (assíncrona) ==
-FILA -> W : processar(reservaIds) ao fim do prazo
-activate W
-W -> RR : buscarPorIds(reservaIds)
-RR --> W : Reserva[]
-opt reservas ainda ATIVAS (pagamento não confirmado)
-  opt existe pedido AGUARDANDO_PAGAMENTO
-    W -> PED : cancelar(pedidoId)
-    W -> CR : marca CobrancaPix como EXPIRADA
-  end
-  loop para cada reserva
-    W -> CAT : liberarPeca(anuncioId)
-    note right of CAT : status volta para DISPONIVEL\nsomente se ainda estiver RESERVADO
-    W -> RR : reserva.expirar() e salvar
-  end
+== Se o prazo acabar sem pagamento ==
+S -> S : expirarReservas(reservaIds)\n(job agendado no fim do prazo)
+opt pagamento não foi confirmado
+  S -> M5 : cancelar(pedidoId)
+  S -> M3 : liberarPeca(anuncioId)
+  note right of M3 : a peça volta a\nficar DISPONIVEL
 end
-deactivate W
 @enduml

@@ -1,119 +1,48 @@
 @startuml
 !include ../_estilo.iuml
 title UC03 · Buscar peças na vitrine e consultar detalhes — Diagrama de sequência\n<size:11>Requisitos 007 e 008 · Módulo 03 (Catálogo e Detalhes da Peça)</size>
-autonumber "<b>0."
+autonumber
 hide footbox
 
-actor "Comprador" as U
-participant "Cloudflare\n(CDN)" as CF
-participant "Frontend\n(Next.js SSR/ISR)" as FE
-box "API NestJS · Módulo 03" #FAFAFA
-  participant ":CatalogoController" as CC
-  participant ":CatalogoService" as CS
-  participant ":CacheVitrine" as CACHE
-end box
-box "app/core (interfaces)" #F0FAF9
-  participant "<<interface>>\n:AnunciosPort" as AP
-  participant "<<interface>>\n:ContasPort" as CP
-end box
-database "Redis" as R
-database "PostgreSQL" as PG
+actor Comprador
+participant "Frontend" as FE
+participant ":CatalogoController" as C
+participant ":CatalogoService" as S
+participant "Módulo 02\n(AnunciosPort)" as M2
+participant "Módulo 01\n(ContasPort)" as M1
 
 == Busca na vitrine ==
-U -> CF : GET /catalogo?busca&categoria&tamanho&condicao&preco&ordem&pagina
-activate CF
-alt página em cache na borda
-  CF --> U : HTML da vitrine (cache)
-else sem cache
-  CF -> FE : requisição da página
-  activate FE
-  FE -> CC : GET /catalogo (FiltroCatalogo)
-  activate CC
-  CC -> CS : listar(filtro)
-  activate CS
-  CS -> CS : validarFiltro(filtro)
-  alt filtro inválido (ex.: preço mínimo > máximo, página < 1)
-    CS --> CC : FiltroInvalidoException
-    CC --> FE : 400 Bad Request
-    FE --> CF : página com aviso nos filtros
-  else filtro válido
-    CS -> CACHE : obter(filtro.chaveCache())
-    CACHE -> R : GET vitrine:{chave}
-    R --> CACHE : valor ou vazio
-    CACHE --> CS : PaginaResultado [0..1]
-    alt resultado em cache (TTL curto)
-      CS -> CS : usa resultado do cache
-    else sem cache
-      CS -> AP : buscarAtivos(filtro)
-      activate AP
-      AP -> PG : SELECT ... WHERE status = 'DISPONIVEL'\nAND busca full-text (sem acento/maiúsculas)\nAND filtros ORDER BY ... LIMIT/OFFSET
-      PG --> AP : linhas + total
-      AP --> CS : PaginaResultado<PecaResumo>
-      deactivate AP
-      CS -> CACHE : guardar(chave, resultado)
-      CACHE -> R : SET vitrine:{chave} EX ttl
-    end
-    CS --> CC : PaginaResultado<PecaResumo>
-    CC --> FE : 200 OK
-    FE --> CF : HTML renderizado (SSR)
-  end
-  deactivate CS
-  deactivate CC
-  CF --> U : vitrine paginada
-  deactivate FE
-end
-deactivate CF
-note over U, FE
-  Só aparecem peças ativas: pausadas, ocultadas
-  pelo admin e vendidas ficam fora da listagem.
-end note
-
-opt comprador altera filtros, ordenação ou página, ou limpa os filtros
-  U -> CF : nova requisição com outra query string
-  note right of U : repete o fluxo "Busca na vitrine"
+Comprador -> FE : digita a busca e escolhe filtros
+FE -> C : listar(filtro)
+C -> S : listar(filtro)
+S -> M2 : buscarAtivos(filtro)
+M2 --> S : página de peças
+S --> FE : página de peças
+FE --> Comprador : mostra foto, título, tamanho, preço e condição
+opt muda filtros, ordenação ou página
+  Comprador -> FE : altera a busca
+  FE -> C : listar(novoFiltro)
+  C --> FE : nova página de peças
 end
 
 == Detalhes da peça ==
-U -> CF : GET /peca/{id}
-activate CF
-CF -> FE : página da peça (ISR)
-activate FE
-FE -> CC : GET /catalogo/pecas/{id}
-activate CC
-CC -> CS : detalhar(id)
-activate CS
-CS -> AP : obterVisivel(id)
-activate AP
-AP -> PG : SELECT anuncio e fotos (sem cache)
-PG --> AP : linha ou vazio
-AP --> CS : DadosAnuncio [0..1]
-deactivate AP
-
-alt peça inexistente ou ocultada pelo admin
-  CS --> CC : PecaNaoEncontradaException
-  CC --> FE : 404 Not Found
-  FE --> CF : página de erro amigável
+Comprador -> FE : abre uma peça
+FE -> C : detalhar(anuncioId)
+C -> S : detalhar(anuncioId)
+S -> M2 : buscarPorId(anuncioId)
+alt peça não existe ou foi ocultada
+  M2 --> S : nenhum anúncio
+  S --> FE : peça não encontrada
+  FE --> Comprador : página de erro amigável
 else peça encontrada
-  CS -> CP : obterPerfilPublico(vendedorId)
-  CP --> CS : PerfilPublicoVendedor (nome público e cidade)
-  CS -> CS : monta DetalhesPeca e\ncalcula disponibilidade
-  CS --> CC : DetalhesPeca
-  CC --> FE : 200 OK DetalhesPeca
-  alt disponibilidade = DISPONIVEL
-    FE -> FE : habilita "Adicionar ao carrinho"
-  else RESERVADA ou VENDIDA
-    FE -> FE : exibe selo de status e desabilita a compra
+  M2 --> S : anúncio (status lido do banco)
+  S -> M1 : obterPerfilPublico(vendedorId)
+  M1 --> S : nome público e cidade
+  S --> FE : detalhes da peça
+  alt peça disponível
+    FE --> Comprador : galeria, dados e botão "Comprar"
+  else peça reservada ou vendida
+    FE --> Comprador : galeria, dados e compra desabilitada
   end
-  FE --> CF : HTML com galeria, descrição e vendedor
 end
-deactivate CS
-deactivate CC
-CF --> U : página da peça
-deactivate FE
-deactivate CF
-
-note over CS, PG
-  Disponibilidade sempre lida do banco, nunca do cache Redis.
-  A página ISR é revalidada quando a peça muda de status.
-end note
 @enduml

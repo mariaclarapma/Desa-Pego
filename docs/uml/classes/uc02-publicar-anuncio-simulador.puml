@@ -3,83 +3,27 @@
 set separator none
 title UC02 · Publicar anúncio com simulação de ganho — Diagrama de classes\n<size:11>Requisitos 004 e 005 (e regra do 002) · Módulo 02 (Anúncios e Simulador)</size>
 hide empty members
-left to right direction
-skinparam nodesep 35
-skinparam ranksep 55
 
-package "Frontend (Next.js)" {
-  class FormularioAnuncio <<componente React>> {
-    - parametros: ParametrosSimulacao
-    - precoCentavos: int
-    + aoAlterarCategoriaOuCondicao(): void
-    + aoAlterarPreco(valor: string): void
-    + enviarFotos(arquivos: File[]): void
-    + publicar(): void
-  }
-}
-
-package "Módulo 02 · Anúncios (app/anuncios)" {
-
-  class SimuladorController <<controller>> {
-    + obterParametros(categoria: string, condicao: CondicaoPeca): ParametrosSimulacao
+package "Módulo 02 · Anúncios" {
+  class AnuncioController {
+    + obterParametrosSimulacao(categoria: string, condicao: Condicao): ParametrosSimulacao
+    + gerarUrlsDeUpload(quantidade: int): string[]
+    + publicar(dados: NovoAnuncio): Anuncio
   }
 
-  class SimuladorService <<service>> {
-    - configuracao: ConfiguracaoPort
-    + obterParametros(categoria: string, condicao: CondicaoPeca): ParametrosSimulacao
+  class AnuncioService {
+    + obterParametrosSimulacao(categoria: string, condicao: Condicao): ParametrosSimulacao
+    + gerarUrlsDeUpload(quantidade: int): string[]
+    + publicar(vendedorId: UUID, dados: NovoAnuncio): Anuncio
+    - validarFotos(fotos: string[]): void
   }
 
-  class ParametrosSimulacao <<DTO>> {
-    + comissaoPercentual: Decimal
-    + taxaPixPercentual: Decimal
-    + faixaSugerida: FaixaPreco [0..1]
+  class ArmazenamentoFotos {
+    + gerarUrlUpload(nomeArquivo: string, tipo: string): string
+    + existe(nomeArquivo: string): boolean
   }
 
-  class AnuncioController <<controller>> {
-    + solicitarUrlsUpload(dto: SolicitarUploadDto): UrlUpload[]
-    + criar(dto: CriarAnuncioDto): AnuncioResposta
-  }
-
-  class SolicitarUploadDto <<DTO>> {
-    + arquivos: ArquivoFoto [1..5]
-  }
-
-  class ArquivoFoto <<DTO>> {
-    + tipoConteudo: string
-    + tamanhoBytes: int
-  }
-
-  class UrlUpload <<DTO>> {
-    + chaveObjeto: string
-    + urlPreAssinada: string
-    + expiraEm: DateTime
-  }
-
-  class CriarAnuncioDto <<DTO>> {
-    + titulo: string
-    + descricao: string
-    + categoria: string
-    + tamanho: string
-    + marca: string [0..1]
-    + condicao: CondicaoPeca
-    + precoCentavos: int
-    + chavesFotos: string [1..5]
-  }
-
-  class AnuncioService <<service>> {
-    - {static} TIPOS_PERMITIDOS: string[] = [JPG, PNG, WebP]
-    - {static} MAX_FOTOS: int = 5
-    - tamanhoMaxBytes: int
-    - anuncios: AnuncioRepository
-    - contas: ContasPort
-    - armazenamento: ArmazenamentoArquivos
-    - filaMiniaturas: FilaMiniaturas
-    + gerarUrlsUpload(vendedorId: UUID, arquivos: ArquivoFoto[]): UrlUpload[]
-    + publicar(vendedorId: UUID, dto: CriarAnuncioDto): Anuncio
-    - validarFotos(arquivos: ArquivoFoto[]): void
-  }
-
-  class Anuncio <<entity>> {
+  class Anuncio {
     - id: UUID
     - vendedorId: UUID
     - titulo: string
@@ -87,22 +31,18 @@ package "Módulo 02 · Anúncios (app/anuncios)" {
     - categoria: string
     - tamanho: string
     - marca: string [0..1]
-    - condicao: CondicaoPeca
+    - condicao: Condicao
     - precoCentavos: int
     - status: StatusAnuncio
-    - criadoEm: DateTime
-    + {static} criar(vendedorId: UUID, dados: CriarAnuncioDto): Anuncio
     + podeSerAlterado(): boolean
-    + pausar(): void
   }
 
-  class FotoAnuncio <<entity>> {
-    - id: UUID
-    - chaveObjeto: string
+  class FotoAnuncio {
+    - url: string
     - ordem: int
   }
 
-  enum CondicaoPeca {
+  enum Condicao {
     NOVA_COM_ETIQUETA
     OTIMO_ESTADO
     BOM_ESTADO
@@ -116,104 +56,55 @@ package "Módulo 02 · Anúncios (app/anuncios)" {
     VENDIDO
     OCULTO
   }
-
-  class AnuncioRepository <<repository>> {
-    + salvar(anuncio: Anuncio): Anuncio
-  }
-
-  class FilaMiniaturas <<produtor BullMQ>> {
-    + agendarGeracao(anuncioId: UUID): void
-  }
-
-  class SemChavePixException <<exception>>
-  class AnuncioInvalidoException <<exception>>
 }
 
 package "app/core" {
-  interface ContasPort <<interface>> {
-    + possuiChavePixValida(usuarioId: UUID): boolean
+  interface ContasPort {
+    + possuiChavePix(usuarioId: UUID): boolean
   }
-  interface ConfiguracaoPort <<interface>> {
-    + obterVigente(): ConfiguracaoPlataforma
-    + obterFaixaSugerida(categoria: string, condicao: string): FaixaPreco [0..1]
+  interface ConfiguracaoPort {
+    + obterComissaoETaxaPix(): Taxas
+    + obterFaixaSugerida(categoria: string, condicao: Condicao): FaixaPreco [0..1]
   }
-  interface ArmazenamentoArquivos <<interface>> {
-    + gerarUrlUpload(chave: string, tipoConteudo: string, tamanhoMaxBytes: int): string
-    + existeObjeto(chave: string): boolean
+  class CalculadoraPreco {
+    + {static} calcular(precoCentavos: int, comissao: Decimal, taxaPix: Decimal): Simulacao
   }
-  class ConfiguracaoPlataforma <<value object>> {
-    + comissaoPercentual: Decimal
-    + taxaPixPercentual: Decimal
-    + freteFixoCentavos: int
-    + tempoReservaMinutos: int
-  }
-  class FaixaPreco <<value object>> {
-    + minCentavos: int
-    + maxCentavos: int
-  }
-  package "pricing" {
-    class CalculadoraPreco <<utility>> {
-      + {static} calcular(precoCentavos: int, comissaoPercentual: Decimal, taxaPixPercentual: Decimal): DivisaoValor
-    }
-    class DivisaoValor <<value object>> {
-      + precoCentavos: int
-      + comissaoCentavos: int
-      + taxaPixCentavos: int
-      + liquidoCentavos: int
-      .. invariante: comissão + taxa + líquido = preço ..
-    }
+  class Simulacao {
+    + precoCentavos: int
+    + comissaoCentavos: int
+    + taxaPixCentavos: int
+    + liquidoCentavos: int
   }
 }
 
-package "Implementações em outros módulos / adaptadores" {
-  class PerfilVendedorService <<Módulo 01>>
-  class ConfiguracaoService <<Módulo 05>>
-  class S3ArmazenamentoProvider <<adaptador S3>>
-}
-
-' Frontend
-FormularioAnuncio ..> CalculadoraPreco : <<use>> no navegador
-FormularioAnuncio ..> SimuladorController : GET parâmetros
-FormularioAnuncio ..> AnuncioController : POST anúncio
-
-' Simulador
-SimuladorController "1" --> "1" SimuladorService
-SimuladorService "1" --> "1" ConfiguracaoPort
-SimuladorService ..> ParametrosSimulacao : <<create>>
-ParametrosSimulacao --> "0..1" FaixaPreco
-
-' Publicação
-AnuncioController "1" --> "1" AnuncioService
-AnuncioController ..> CriarAnuncioDto : <<use>>
-AnuncioController ..> SolicitarUploadDto : <<use>>
-SolicitarUploadDto *-- "1..5" ArquivoFoto
-AnuncioService ..> UrlUpload : <<create>>
-AnuncioService "1" --> "1" AnuncioRepository
-AnuncioService "1" --> "1" ContasPort
-AnuncioService "1" --> "1" ArmazenamentoArquivos
-AnuncioService "1" --> "1" FilaMiniaturas
-AnuncioService ..> Anuncio : <<create>>
-AnuncioService ..> SemChavePixException : <<throw>>
-AnuncioService ..> AnuncioInvalidoException : <<throw>>
-AnuncioRepository ..> Anuncio
+AnuncioController --> "1" AnuncioService
+AnuncioService --> "1" ArmazenamentoFotos
+AnuncioService --> "1" ContasPort
+AnuncioService --> "1" ConfiguracaoPort
+AnuncioService ..> Anuncio : cria
 Anuncio "1" *-- "1..5" FotoAnuncio : fotos
-Anuncio --> "1" CondicaoPeca
+Anuncio --> "1" Condicao
 Anuncio --> "1" StatusAnuncio
-
-' Núcleo
-ConfiguracaoPort ..> ConfiguracaoPlataforma
-CalculadoraPreco ..> DivisaoValor : <<create>>
-
-' Realizações
-PerfilVendedorService ..|> ContasPort
-ConfiguracaoService ..|> ConfiguracaoPort
-S3ArmazenamentoProvider ..|> ArmazenamentoArquivos
+CalculadoraPreco ..> Simulacao : cria
 
 note as N1
-  Publicado com status DISPONIVEL.
-  podeSerAlterado() é falso quando
-  RESERVADO ou VENDIDO (Req. 004).
-  Preço em centavos inteiros, > 0.
+  A mesma função roda no navegador (simulador
+  em tempo real) e no backend (valor oficial
+  do pedido), conforme o ADR-002.
 end note
-N1 .. Anuncio
+N1 .. CalculadoraPreco
+
+note as N2
+  Só quem tem chave Pix pode
+  publicar (regra do Req. 002,
+  implementada pelo Módulo 01).
+end note
+N2 .. ContasPort
+
+note as N3
+  Preço em centavos, maior que zero.
+  Não pode ser alterado quando está
+  RESERVADO ou VENDIDO.
+end note
+N3 .. Anuncio
 @enduml

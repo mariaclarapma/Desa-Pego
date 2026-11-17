@@ -1,139 +1,56 @@
 @startuml
 !include ../_estilo.iuml
 title UC01 · Cadastrar conta e autenticar-se — Diagrama de sequência\n<size:11>Requisito 001 · Módulo 01 (Contas e Perfil)</size>
-autonumber "<b>0."
+autonumber
 hide footbox
 
-actor "Visitante" as V
-participant "Frontend\n(Next.js)" as FE
-box "API NestJS · Módulo 01" #FAFAFA
-  participant ":AuthController" as C
-  participant ":AuthService" as S
-  participant "<<value object>>\nCpf" as CPF
-  participant ":CriptografiaCampoService" as CR
-  participant ":HashSenhaService" as H
-  participant ":LimitadorTentativasLogin" as L
-  participant ":TokenService" as T
-  participant ":UsuarioRepository" as UR
-  participant ":RefreshTokenRepository" as RT
-end box
-database "PostgreSQL" as PG
-database "Redis" as R
+actor Visitante
+participant "Frontend" as FE
+participant ":AuthController" as C
+participant ":AuthService" as S
+database "Banco de dados" as DB
 
 == Cadastro ==
-V -> FE : preenche nome, e-mail, CPF e senha
-activate FE
-FE -> FE : valida formulário (React Hook Form + Zod)
-FE -> C : POST /auth/cadastro (CadastroDto)
-activate C
-C -> S : cadastrar(dto)
-activate S
-S -> CPF : criar(dto.cpf)
-activate CPF
-CPF -> CPF : valido(): confere dígitos verificadores
-CPF --> S : cpf
-deactivate CPF
-
+Visitante -> FE : preenche nome, e-mail, CPF e senha
+FE -> C : cadastrar(nome, email, cpf, senha)
+C -> S : cadastrar(nome, email, cpf, senha)
+S -> S : validarCpf(cpf)
 alt CPF inválido
-  S --> C : CpfInvalidoException
-  C --> FE : 400 Bad Request "CPF inválido"
+  S --> FE : erro "CPF inválido"
 else CPF válido
-  S -> CR : hashDeterministico(cpf)
-  CR --> S : cpfHash
-  S -> UR : existePorEmailOuCpfHash(email, cpfHash)
-  UR -> PG : SELECT por email ou cpf_hash
-  PG --> UR : resultado
-  UR --> S : existe
+  S -> DB : busca o e-mail e o hash do CPF
+  DB --> S : resultado
   alt e-mail ou CPF já cadastrado
-    S --> C : ContaDuplicadaException
-    C --> FE : 409 Conflict "E-mail ou CPF já cadastrado"
-  else dados inéditos
-    S -> H : gerarHash(senha)
-    H --> S : senhaHash (Argon2id)
-    S -> CR : criptografar(cpf)
-    CR --> S : cpfCriptografado
-    S -> UR : salvar(usuario)
-    UR -> PG : INSERT usuario (UNIQUE email, cpf_hash)
-    PG --> UR : ok
-    note right of PG
-      Se dois cadastros concorrentes passarem
-      pela verificação, a restrição UNIQUE
-      rejeita o segundo (também 409).
-    end note
-    UR --> S : usuario
-    S --> C : usuario
-    C --> FE : 201 Created (UsuarioResposta, sem senha e sem CPF)
+    S --> FE : erro "E-mail ou CPF já cadastrado"
+  else dados novos
+    S -> S : gera hash da senha (Argon2id)\ne criptografa o CPF
+    S -> DB : salva usuário
+    S --> FE : conta criada
   end
 end
-deactivate S
-deactivate C
-FE --> V : resultado do cadastro
-deactivate FE
+FE --> Visitante : mostra o resultado
 
 == Login ==
-V -> FE : informa e-mail e senha
-activate FE
-FE -> C : POST /auth/login (LoginDto)
-activate C
-C -> S : autenticar(email, senha)
-activate S
-S -> L : verificarBloqueio(email)
-activate L
-L -> R : GET tentativas:{email}
-R --> L : contador
-deactivate L
-
-alt tentativas em excesso
-  S --> C : LoginBloqueadoException
-  C --> FE : 429 Too Many Requests "Tente novamente mais tarde"
-else não bloqueado
-  S -> UR : buscarPorEmail(email)
-  UR -> PG : SELECT usuario
-  PG --> UR : usuario ou vazio
-  UR --> S : usuario [0..1]
-  opt usuário encontrado
-    S -> H : verificar(senha, senhaHash)
-    H --> S : confere
-  end
-  alt usuário inexistente ou senha incorreta
-    S -> L : registrarFalha(email)
-    L -> R : INCR + EXPIRE (janela de bloqueio)
-    S --> C : CredenciaisInvalidasException
-    C --> FE : 401 Unauthorized "E-mail ou senha inválidos"
-    note right of FE : mensagem genérica: não revela\nse o e-mail está cadastrado
-  else credenciais válidas
-    S -> L : limpar(email)
-    L -> R : DEL tentativas:{email}
-    S -> T : emitirAccessToken(usuario)
-    T --> S : JWT de curta duração
-    S -> T : emitirRefreshToken()
-    T --> S : refreshToken
-    S -> RT : salvar(RefreshToken com hash do token)
-    RT -> PG : INSERT refresh_token
-    S --> C : ParTokens
-    C --> FE : 200 OK accessToken + Set-Cookie refresh (httpOnly, Secure)
-  end
+Visitante -> FE : informa e-mail e senha
+FE -> C : login(email, senha)
+C -> S : login(email, senha)
+alt muitas tentativas erradas
+  S --> FE : erro "Tente novamente mais tarde"
+else e-mail ou senha incorretos
+  S -> S : registrarTentativaFalha(email)
+  S --> FE : erro "E-mail ou senha inválidos"
+  note right of FE : mensagem genérica: não diz\nse o e-mail existe
+else credenciais corretas
+  S -> DB : salva refresh token
+  S --> FE : JWT + refresh token (cookie httpOnly)
 end
-deactivate S
-deactivate C
-FE --> V : área logada ou mensagem de erro
-deactivate FE
+FE --> Visitante : entra na conta ou mostra o erro
 
 opt Logout
-  V -> FE : sair
-  FE -> C : POST /auth/logout (cookie refresh)
-  activate C
-  C -> S : encerrarSessao(refreshToken)
-  activate S
-  S -> T : hash(refreshToken)
-  T --> S : tokenHash
-  S -> RT : buscarAtivoPorHash(tokenHash)
-  RT --> S : refreshToken [0..1]
-  S -> RT : revogar(id)
-  RT -> PG : UPDATE refresh_token SET revogado_em
-  S --> C : ok
-  deactivate S
-  C --> FE : 204 No Content + cookie removido
-  deactivate C
+  Visitante -> FE : sair
+  FE -> C : logout(refreshToken)
+  C -> S : logout(refreshToken)
+  S -> DB : revoga o refresh token
+  S --> FE : sessão encerrada
 end
 @enduml
