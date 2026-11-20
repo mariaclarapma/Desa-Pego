@@ -82,8 +82,11 @@ const nextConfig: NextConfig = {
   async rewrites() {
     const catalogo = process.env.CATALOGO_API_URL ?? "http://localhost:3001";
     const contas = process.env.CONTAS_API_URL ?? "http://localhost:3002";
+    const pedidos = process.env.PEDIDOS_API_URL ?? "http://localhost:3003";
     return [
       { source: "/api/auth/:caminho*", destination: `${contas}/auth/:caminho*` },
+      // Módulo 05: pedidos, carteira e painel da administração
+      { source: "/api/gestao/:caminho*", destination: `${pedidos}/:caminho*` },
       // inclui /api/integracao/*: sistemas parceiros chegam por aqui, protegidos pela X-API-Key
       { source: "/api/:caminho*", destination: `${catalogo}/:caminho*` },
     ];
