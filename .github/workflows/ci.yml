@@ -73,6 +73,33 @@ jobs:
         if: hashFiles('package-lock.json') != ''
         run: npm test
 
+      - name: Build
+        if: hashFiles('package-lock.json') != ''
+        run: npm run build
+
+      # sobe tudo como no Render (npm start, modo produção, Postgres real) e confere as três peças
+      - name: Teste de fumaça (npm start como no Render)
+        if: hashFiles('package-lock.json') != ''
+        env:
+          NODE_ENV: production
+          PORT: 4000
+          DATABASE_URL: postgresql://desapego:desapego@localhost:5432/desapego_test
+        run: |
+          export JWT_SECRET="$(openssl rand -base64 48)"
+          npm start > start.log 2>&1 &
+          for i in $(seq 1 60); do
+            curl -sf http://localhost:4000/api/auth/saude > /dev/null && break
+            sleep 2
+          done
+          curl -sf http://localhost:4000/api/auth/saude
+          curl -sf -o /dev/null http://localhost:4000/api/pecas
+          curl -sf -o /dev/null http://localhost:4000/
+          echo "site, catálogo e contas respondendo"
+
+      - name: Log do npm start (se o teste de fumaça falhar)
+        if: failure()
+        run: cat start.log || true
+
   gitleaks:
     name: Detecção de segredos (gitleaks)
     runs-on: ubuntu-latest

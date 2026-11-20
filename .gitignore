@@ -31,3 +31,4 @@ backend/contas/dados/
 .vscode/*
 !.vscode/extensions.json
 .claude/
+start.log
