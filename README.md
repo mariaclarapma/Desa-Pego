@@ -43,7 +43,8 @@ Está sendo desenvolvido como projeto acadêmico do curso de Ciência da Computa
 | CI com lint, testes (PostgreSQL e Redis) e detecção de segredos | Concluído |
 | Desenvolvimento dos 5 módulos (backend e frontend) | Em andamento |
 | Testes de integração entre os módulos e homologação | A fazer |
-| Deploy | A fazer |
+| Segurança (CORS, API key, CSP, limite por IP), testes E2E com Cypress e auditoria de acessibilidade | Concluído |
+| Deploy (Render + Supabase): [desapego.onrender.com](https://desapego.onrender.com) | Concluído |
 
 ## Como funciona uma venda
 
@@ -206,27 +207,90 @@ As permissões são validadas no backend, por perfil e por posse do recurso (ex.
 
 ## Como rodar localmente
 
-A primeira versão do código (seminário de Desenvolvimento Web do CEUB) roda sem Docker: o frontend é Next.js e o
-backend tem o **serviço de contas** (Express + TypeScript + PostgreSQL, no lugar de NestJS) e um catálogo
-simulado com json-server.
+A primeira versão do código (seminário de Desenvolvimento Web do CEUB) roda sem Docker. Ela é um monorepo com npm
+workspaces:
+
+| Pasta | O que tem |
+| --- | --- |
+| `frontend/` | Next.js 15 (App Router), React 19, TypeScript e **Tailwind CSS v4**, com layout pensado primeiro para celular. Testes unitários com Vitest e E2E com **Cypress** (`frontend/cypress/`). |
+| `backend/contas/` | Serviço de contas: Express + TypeScript + PostgreSQL. Cadastro, login, JWT e CRUD da conta. Porta 3002. |
+| `backend/catalogo/` | API do catálogo: Express + TypeScript, com peças, reservas, pedidos e rotas de integração. Porta 3001. |
+| `backend/comum/` | Segurança compartilhada pelos dois serviços: CORS por lista, limite por IP e API key. |
+
+### Instalar e rodar
 
 Requer **Node.js 22.13 ou mais novo**.
 
 ```bash
-npm install      # instala frontend e backend (npm workspaces)
-npm run dev      # frontend em http://localhost:3000 · catálogo em :3001 · contas em :3002
+npm install        # instala frontend e backend
+npm run gerar-env  # cria o .env com JWT_SECRET e API_KEYS aleatórios (só na primeira vez)
+npm run dev        # site em http://localhost:3000 · catálogo em :3001 · contas em :3002
 ```
 
 | Comando (na raiz) | O que faz |
 | --- | --- |
-| `npm test` | testes do frontend e do backend (Vitest + Supertest) |
+| `npm test` | testes unitários e de API (Vitest + Supertest) do frontend e do backend |
+| `npm run e2e` | testes E2E com Cypress: faz o build, sobe os 3 serviços e roda tudo |
+| `npm run e2e:abrir` | abre o Cypress interativo (rode `npm run build` antes) |
+| `npm run cobertura` | cobertura combinada (Vitest + Cypress) com relatório em `coverage/index.html`; falha abaixo de 80% |
 | `npm run lint` / `npm run typecheck` / `npm run build` | lint, checagem de tipos e build de produção |
 | `npm run reset-db` | volta o catálogo ao estado inicial |
 | `npm start` | modo produção (depois do `npm run build`): site, contas e catálogo juntos, como na hospedagem |
 
-Sem configurar nada, as contas ficam num Postgres **em memória** e somem quando o servidor reinicia. Para
-guardá-las, copie [`backend/.env.example`](backend/.env.example) para `backend/.env` e preencha `DATABASE_URL`
-(por exemplo, com o banco do Supabase; veja abaixo). O `.env` **nunca vai para o Git**.
+### Variáveis de ambiente
+
+Frontend e backend leem o mesmo arquivo: o **`.env` na raiz**, criado pelo `npm run gerar-env` a partir do
+[`.env.example`](.env.example). O `.env` **nunca vai para o Git**. Na hospedagem, as variáveis ficam no painel do
+Render.
+
+| Variável | Para que serve | Padrão em desenvolvimento | Em produção |
+| --- | --- | --- | --- |
+| `JWT_SECRET` | assina os tokens de acesso (32+ caracteres) | gerado a cada início | **obrigatório** |
+| `API_KEYS` | chaves aceitas no `X-API-Key` das rotas de integração (separadas por vírgula) | sem chave, a integração fica desligada | gerada pelo Render |
+| `CORS_ORIGENS` | origens do frontend liberadas no CORS (separadas por vírgula) | `http://localhost:3000` | **obrigatório** |
+| `DATABASE_URL` | PostgreSQL das contas (Supabase) | vazio = banco em memória | **obrigatório** |
+| `TRUST_PROXY` | proxies confiáveis para ler o IP real | `loopback` | `loopback, uniquelocal` |
+| `PORTA_CONTAS`, `PORTA_CATALOGO`, `CONTAS_API_URL`, `CATALOGO_API_URL`, `COOKIE_PATH` | portas e endereços internos | já preenchidos | iguais |
+
+### Testes
+
+| Tipo | Ferramenta | Onde | O que cobre |
+| --- | --- | --- | --- |
+| Unitários e de API | Vitest + Supertest | `*.test.ts(x)` ao lado do código | regras de negócio, validação, segurança (CORS, API key, limite), CRUD da conta pela API |
+| E2E | Cypress | `frontend/cypress/e2e/` | login, cadastro e logout; navegação (celular e desktop); CRUD da conta; compra (sacola, checkout, pedido, Pix); cabeçalhos de segurança |
+| Acessibilidade | cypress-axe (axe-core) | dentro dos E2E | WCAG 2.1 A e AA em todas as páginas, nos temas claro, escuro e alto contraste |
+
+Os E2E falham se o navegador registrar qualquer violação da CSP, então eles também validam a política de segurança.
+
+**Cobertura:** a meta é **80% combinada**, com unitários (Vitest) e E2E (Cypress) num relatório só. O
+`npm run cobertura`:
+1. roda o Vitest do frontend e do backend com Istanbul;
+2. faz um build separado do site com o código instrumentado (`babel-plugin-istanbul` depois do SWC; o mapa de
+   origem leva a cobertura de volta para os `.tsx`);
+3. roda o Cypress com o `@cypress/code-coverage`, que lê a cobertura do navegador e do servidor do Next;
+4. junta tudo com o `nyc` em `coverage/index.html` e falha se linhas ou instruções ficarem abaixo de 80%
+   (configuração em [`scripts/nyc-relatorio.json`](scripts/nyc-relatorio.json)).
+
+Resultado atual: **85,2% das linhas e 83,4% das instruções** (frontend + backend), com 126 testes unitários e de
+API e 22 testes E2E.
+
+> No Windows, rodando de dentro do VS Code: o script de E2E remove a variável `ELECTRON_RUN_AS_NODE`, que o VS Code
+> define e que impede o Cypress de abrir.
+
+### Acessibilidade (WCAG 2.1 AA)
+
+- **HTML semântico**: `header`, `nav` com `aria-label`, `main`, `footer`, títulos em ordem, `dialog` nativo no menu do
+  celular e link "pular para o conteúdo".
+- **Formulários**: todo campo tem `<label>` visível (o placeholder não serve de rótulo) e `autocomplete`. Erros aparecem
+  ao lado do campo (`aria-invalid` e `aria-describedby`) e em `role="alert"`, e o foco vai para o primeiro campo errado.
+- **Teclado**: foco visível em tudo; menu e painéis fecham com Esc e devolvem o foco; abas de entrar e cadastrar
+  funcionam com as setas.
+- **Leitor de tela**: botões só com ícone têm nome acessível; a sacola anuncia quantas peças tem; avisos dinâmicos
+  usam `aria-live`.
+- **Contraste e temas**: claro, escuro e alto contraste, conferidos pelo axe. Os textos decorativos (marcas d'água)
+  ficam fora da regra de contraste, como o WCAG 1.4.3 permite.
+- **Imagens**: `alt` descritivo nas fotos das peças e `alt=""` nas decorativas.
+- **Extras**: barra de acessibilidade (tamanho da fonte, tema e VLibras) e layout testado em 375 px.
 
 ### Contas: autenticação e CRUD de usuários (Módulo 01, [#1](../../issues/1))
 
@@ -244,7 +308,70 @@ senha) → troque a senha → saia e entre com a senha nova → exclua a conta.
 
 Detalhes da API em [`backend/README.md`](backend/README.md) e da interface em [`frontend/README.md`](frontend/README.md).
 Testes: `backend/contas/src/app.test.ts` (cadastro, login e sessão), `backend/contas/src/crud.test.ts` (as quatro
-operações) e `frontend/src/app/conta/crud.test.tsx` (telas da conta).
+operações), `frontend/src/app/conta/crud.test.tsx` (telas da conta) e, de ponta a ponta,
+`frontend/cypress/e2e/conta-crud.cy.ts` e `autenticacao.cy.ts`.
+
+### API do catálogo e integração
+
+| Rota | Quem usa | O que faz |
+| --- | --- | --- |
+| `GET /pecas`, `GET /pecas/:id` | site | vitrine e página da peça |
+| `POST /pecas/:id/reservar` | site (sacola) | reserva por 15 min; o servidor decide numa fila, então duas pessoas não reservam a mesma peça |
+| `POST /pecas/:id/liberar` | site (sacola) | desfaz a reserva |
+| `POST /pedidos`, `GET /pedidos/:id` | site (checkout) | cria e consulta o pedido; preço, frete e total são calculados no servidor |
+| `POST /integracao/pagamentos/:id/confirmar` | **parceiro, com `X-API-Key`** | o "webhook" do Pix: marca o pedido como pago e as peças como vendidas (idempotente) |
+| `GET /integracao/pedidos?status=` | **parceiro, com `X-API-Key`** | exporta os pedidos, por exemplo para um sistema de gestão |
+
+Pelo site, tudo fica sob `/api` (por exemplo, `https://desapego.onrender.com/api/integracao/pedidos`). O botão
+"simular pagamento" chama a integração por uma server action do Next.js, então a API key nunca chega ao navegador.
+
+```bash
+curl -H "X-API-Key: <sua chave do .env>" http://localhost:3000/api/integracao/pedidos?status=pago
+```
+
+## Segurança da aplicação (o que está implementado)
+
+| Camada | Como | Onde |
+| --- | --- | --- |
+| **Autenticação por token** | JWT HS256 de 15 min, guardado só na memória do navegador. Refresh token de 30 dias em cookie `httpOnly`, `Secure`, `SameSite=Strict`, com rotação; se um token já usado reaparece, todas as sessões da conta caem. As rotas `/auth/me*` passam pelo middleware `autenticado`. | `backend/contas/src/app.ts`, `tokens.ts` |
+| **Senhas** | Argon2id; mensagens genéricas no login; reautenticação para trocar e-mail ou senha e para excluir a conta | `backend/contas/src/senhas.ts` |
+| **API key** | `X-API-Key` nas rotas `/integracao/*`; chaves só em variáveis de ambiente (`API_KEYS`), comparadas em tempo constante; sem chave configurada, as rotas ficam desligadas | `backend/comum/seguranca.ts` |
+| **CORS** | só as origens de `CORS_ORIGENS`, nunca `*`. Origem de fora recebe 403, o que também barra formulários de outros sites (CSRF) | `backend/comum/seguranca.ts` |
+| **CSP e cabeçalhos** | Páginas: CSP (scripts só do próprio site e do VLibras; `frame-ancestors 'none'`; `object-src 'none'`), X-Frame-Options DENY, nosniff, Referrer-Policy, Permissions-Policy, COOP e HSTS em produção, sem `x-powered-by`. APIs: Helmet. | `frontend/next.config.ts`, `app.ts` dos serviços |
+| **Limite de requisições (camada 7)** | por IP: login (5 erros bloqueiam 15 min), cadastro (10/h), escrita no catálogo (30/min) e leitura (300/min), com `Retry-After` | `backend/comum/seguranca.ts`, `backend/contas/src/limite.ts` |
+| **Validação e sanitização** | Zod em todas as entradas (tamanho, formato, campos permitidos); ids só com `[a-zA-Z0-9_-]`; corpo limitado a 10 KB; o React escapa todo texto exibido (sem `dangerouslySetInnerHTML` com dado de usuário) | `validacao.ts`, `catalogo/src/app.ts` |
+| **Regras no servidor** | preço, frete, total, reserva e pagamento são decididos pelo backend; as rotas genéricas de escrita do antigo json-server não existem mais | `backend/catalogo/src/app.ts` |
+| **Segredos** | `.env` fora do Git; gitleaks na CI em todo o histórico | `.github/workflows/ci.yml` |
+
+**Por que algumas coisas não foram feitas:**
+- **Nonce na CSP:** a CSP usa `'unsafe-inline'` em scripts e estilos, porque o Next.js injeta trechos inline. Um
+  nonce exigiria renderizar todas as páginas dinamicamente.
+- **Redis:** o limite de requisições fica em memória, o que basta para uma instância só. Com mais instâncias, ele iria
+  para o Redis, como prevê a arquitetura.
+
+### WAF e firewall de camada 7 em produção
+
+A aplicação já se defende sozinha: valida as entradas, limita requisições por IP e usa a CSP. Um **WAF**
+(Web Application Firewall) fica **na frente** dela e barra ataques antes de chegarem ao servidor.
+
+O Render já passa pela rede da Cloudflare, mas sem regras configuráveis. Para ter um WAF próprio, o caminho
+recomendado (e grátis) é este:
+
+1. **Domínio próprio na Cloudflare** (por exemplo, `desapego.com.br`) com o proxy ligado (nuvem laranja), apontando
+   para o serviço do Render. Depois, adicione o domínio em `CORS_ORIGENS`.
+2. **Regras gerenciadas** (Security → WAF → Managed rules): bloqueiam injeção de SQL, XSS, path traversal e outros
+   ataques do OWASP Top 10. No plano grátis, vem o "Cloudflare Free Managed Ruleset".
+3. **Limite por IP na borda** (Security → WAF → Rate limiting rules), por exemplo: `POST /api/auth/login` com mais de
+   10 por minuto bloqueia o IP por 10 minutos. Essa regra soma com o limite que já existe na aplicação.
+4. **Bots e DDoS**: Bot Fight Mode e a proteção DDoS de camada 7, que é automática.
+5. **Regras próprias**: bloquear países ou ASNs de onde vêm ataques, desafiar (*challenge*) o acesso a
+   `/api/integracao/*` fora da lista de IPs dos parceiros, e só aceitar HTTPS (SSL "Full (strict)").
+6. **Origem fechada**: aceitar só tráfego vindo da Cloudflare (no Render, pelo cabeçalho `CF-Connecting-IP`), e então
+   usar `TRUST_PROXY` com os IPs da Cloudflare para ler o IP real.
+
+Na AWS, o equivalente é o **AWS WAF** com as *managed rule groups* (Core rule set, Known bad inputs, SQL database),
+uma *rate-based rule* por IP, e o WAF associado ao CloudFront ou ao Application Load Balancer na frente do ECS
+(previsto na arquitetura).
 
 ## Hospedagem (Render + Supabase, plano grátis)
 
