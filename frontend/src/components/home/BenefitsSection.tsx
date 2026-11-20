@@ -76,6 +76,8 @@ export function BenefitsSection() {
             >
               <span
                 aria-hidden="true"
+                // número decorativo (marca d'água): o WCAG 1.4.3 isenta texto puramente decorativo do contraste
+                data-decorativo
                 className="pointer-events-none absolute -right-2 -bottom-8 font-display text-[9rem] leading-none font-semibold italic opacity-15 transition-transform duration-500 group-hover:-rotate-6 lg:text-[11rem]"
               >
                 {marca}

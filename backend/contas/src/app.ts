@@ -3,6 +3,7 @@ import cookieParser from "cookie-parser";
 import express, { type NextFunction, type Request, type Response } from "express";
 import helmet from "helmet";
 import { emailDuplicado, type Banco, type UsuarioRegistro } from "./banco.js";
+import { cors } from "../../comum/seguranca.js";
 import type { Config } from "./config.js";
 import { LimiteTentativas } from "./limite.js";
 import { conferirSenha, gerarHashSenha } from "./senhas.js";
@@ -31,6 +32,7 @@ export function criarApp(banco: Banco, config: Config, agora: () => number = Dat
   // Na hospedagem (Render) há mais um proxy na frente; veja TRUST_PROXY em config.ts
   app.set("trust proxy", config.trustProxy);
   app.use(helmet());
+  app.use(cors(config.origens));
   app.use(express.json({ limit: "10kb" }));
   app.use(cookieParser());
 

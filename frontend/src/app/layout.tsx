@@ -53,11 +53,13 @@ export default function RootLayout({
       suppressHydrationWarning
       className={`${fraunces.variable} ${dmSans.variable} ${caveat.variable}`}
     >
-      <head>
-        <script dangerouslySetInnerHTML={{ __html: SCRIPT_PREFERENCIAS }} />
-      </head>
       {/* espaço reservado para a barra de acessibilidade: embaixo no celular, à esquerda a partir de md */}
       <body className="min-h-dvh pb-16 antialiased md:pb-0 md:pl-14">
+        {/*
+          Ajusta o tema antes da primeira pintura. Fica no início do <body>, e não no <head>: extensões
+          do navegador (e o Cypress) inserem scripts no <head>, e o React acusaria erro de hidratação.
+        */}
+        <script dangerouslySetInnerHTML={{ __html: SCRIPT_PREFERENCIAS }} />
         <a
           href="#conteudo"
           className="sr-only focus:not-sr-only focus:fixed focus:top-3 focus:left-3 focus:z-[100] focus:rounded-full focus:bg-roxo focus:px-4 focus:py-2 focus:text-nevoa"

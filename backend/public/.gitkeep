@@ -1,2 +1,0 @@
-# Pasta de arquivos estáticos do json-server (catálogo). Precisa existir: no Linux (Render)
-# o json-server encerra com ENOENT se ela não estiver no repositório.

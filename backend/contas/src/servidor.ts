@@ -1,13 +1,11 @@
+import { fileURLToPath } from "node:url";
+import { carregarEnv } from "../../comum/seguranca.js";
 import { criarApp } from "./app.js";
 import { abrirBanco } from "./banco.js";
 import { lerConfig } from "./config.js";
 
-// backend/.env (fora do Git), se existir. Na hospedagem as variáveis vêm do painel do Render.
-try {
-  process.loadEnvFile(".env");
-} catch {
-  // sem .env: segue com as variáveis do ambiente
-}
+// .env da raiz do repositório (fora do Git), se existir. Na hospedagem as variáveis vêm do painel.
+carregarEnv(fileURLToPath(new URL("../../../.env", import.meta.url)));
 
 const config = lerConfig();
 const banco = await abrirBanco(config.urlBanco);

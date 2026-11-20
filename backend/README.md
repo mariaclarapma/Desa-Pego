@@ -4,7 +4,7 @@ Dois serviços de desenvolvimento, que sobem juntos com `npm run dev` (na raiz d
 
 | Serviço | Porta | O que faz |
 | --- | --- | --- |
-| **catálogo** (json-server) | 3001 | API REST simulada de peças e pedidos, a partir de `db.seed.json` |
+| **catálogo** (Express) | 3001 | peças, reservas e pedidos (dados em `db.json`, criado a partir de `db.seed.json`) e rotas de integração com API key |
 | **contas** (Express + PostgreSQL) | 3002 | cadastro, login e sessão de verdade (Módulo 01, Req. 001) |
 
 O frontend acessa os dois pela mesma origem: `/api/auth/*` vai para contas e `/api/*` para o catálogo
@@ -22,7 +22,7 @@ Requer **Node.js 22.13 ou mais novo**.
 
 ### Banco das contas (PostgreSQL)
 
-- **Com `DATABASE_URL`** em `backend/.env` (veja [`.env.example`](.env.example)): usa esse Postgres, por exemplo o
+- **Com `DATABASE_URL`** no `.env` da raiz (veja [`.env.example`](../.env.example)): usa esse Postgres, por exemplo o
   Supabase, e as contas ficam salvas. As tabelas são criadas sozinhas na primeira vez.
 - **Sem `DATABASE_URL`**: usa o [pg-mem](https://github.com/oguimbal/pg-mem), um Postgres em memória. Não precisa
   instalar nada, mas as contas somem quando o serviço reinicia. Os testes usam o mesmo esquema.
@@ -75,7 +75,7 @@ Testes: `contas/src/app.test.ts` (cadastro, login e sessão) e `contas/src/crud.
 - **Bloqueio** por 15 minutos depois de 5 tentativas erradas (por e-mail e por IP); cadastro limitado a 10 por hora por IP.
 - **Validação** com Zod no backend (o frontend nunca é a barreira); e-mail único sem diferenciar maiúsculas
   (restrição `UNIQUE` no banco); cabeçalhos de segurança com Helmet; corpo limitado a 10 KB.
-- **Segredos**: `JWT_SECRET` vem do ambiente (veja `.env.example`); em produção, sem ele o serviço não sobe.
+- **Segredos**: `JWT_SECRET` vem do ambiente (veja o [`.env.example`](../.env.example) da raiz); em produção, sem ele o serviço não sobe.
 - A URL do banco e o `JWT_SECRET` ficam só no `.env` ou no painel da hospedagem, **nunca no Git**.
 
 ### Limitações desta versão de desenvolvimento
@@ -86,13 +86,28 @@ Testes: `contas/src/app.test.ts` (cadastro, login e sessão) e `contas/src/crud.
   aparelho continua válido até vencer (no máximo 15 minutos), mas a sessão desse aparelho não renova.
   Depois de excluir a conta, nenhum token funciona mais (a conta não existe).
 
-## Catálogo (json-server)
+## API do catálogo (`catalogo/`)
+
+Express + TypeScript, no lugar do json-server (que aceitava PUT/PATCH/DELETE de qualquer pessoa). Expõe só o que
+o site usa, e as regras ficam no servidor.
 
 | Método e rota | Uso |
 | --- | --- |
-| `GET /pecas`, `GET /pecas/:id` | vitrine, página da peça e conferência da reserva |
-| `PATCH /pecas/:id` | reservar, liberar ou marcar como vendida |
-| `POST /pedidos`, `GET /pedidos/:id`, `PATCH /pedidos/:id` | pedido com Pix simulado |
+| `GET /pecas`, `GET /pecas/:id` | vitrine e página da peça (reserva vencida volta como disponível) |
+| `POST /pecas/:id/reservar` | reserva por 15 min · 200, 404, 409 se outra pessoa reservou antes |
+| `POST /pecas/:id/liberar` | desfaz a reserva (peça vendida continua vendida) |
+| `POST /pedidos` | cria o pedido com `{ comprador, endereco, itens: [ids] }`; preço, frete e total vêm do catálogo · 201, 400, 409 |
+| `GET /pedidos/:id` | consulta o pedido |
+| `POST /integracao/pagamentos/:id/confirmar` | **X-API-Key** · webhook do Pix: pago + peças vendidas (idempotente) · 200, 401, 404, 503 |
+| `GET /integracao/pedidos?status=` | **X-API-Key** · exporta os pedidos · 200, 400, 401, 503 |
 
-O json-server não tem transações: a reserva aqui é didática. No backend real ela é um
-`UPDATE ... WHERE status = 'disponivel'` atômico (ADR-003).
+As alterações passam por uma **fila** (uma de cada vez), então duas reservas da mesma peça ao mesmo tempo não passam
+juntas, que é o papel do `UPDATE ... WHERE status = 'disponivel'` atômico do banco real (ADR-003). Tem Helmet, CORS
+por lista (`CORS_ORIGENS`), limite por IP (300 leituras e 30 escritas por minuto) e validação com Zod. Os testes
+ficam em `catalogo/src/app.test.ts`.
+
+## Segurança comum (`comum/`)
+
+`seguranca.ts`: CORS por lista de origens (nunca `*`; origem de fora recebe 403), limite de requisições por IP e
+API key no cabeçalho `X-API-Key` (chaves em `API_KEYS`, comparadas em tempo constante). Os dois serviços usam esse
+módulo. Testes em `comum/seguranca.test.ts`.

@@ -14,6 +14,7 @@ export function SacolaBadge() {
   return (
     <span className="absolute -top-0.5 -right-0.5 grid size-5 place-items-center rounded-full border-2 border-nevoa bg-violeta text-[0.65rem] font-bold text-nevoa">
       {quantidade}
+      <span className="sr-only">{quantidade === 1 ? " peça" : " peças"}</span>
     </span>
   );
 }

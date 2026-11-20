@@ -86,6 +86,8 @@ jobs:
           DATABASE_URL: postgresql://desapego:desapego@localhost:5432/desapego_test
         run: |
           export JWT_SECRET="$(openssl rand -base64 48)"
+          export API_KEYS="$(openssl rand -hex 24)"
+          export CORS_ORIGENS="http://localhost:4000"
           npm start > start.log 2>&1 &
           for i in $(seq 1 60); do
             curl -sf http://localhost:4000/api/auth/saude > /dev/null && break
@@ -99,6 +101,38 @@ jobs:
       - name: Log do npm start (se o teste de fumaça falhar)
         if: failure()
         run: cat start.log || true
+
+  e2e:
+    name: E2E (Cypress) e acessibilidade
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      # o binário do Cypress fica em cache entre execuções
+      - uses: actions/cache@v4
+        with:
+          path: ~/.cache/Cypress
+          key: cypress-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
+
+      - name: Instalar dependências
+        run: npm ci
+
+      # build, sobe site + contas + catálogo e roda os fluxos (login, navegação, CRUD, compra) com axe
+      - name: Testes E2E
+        run: npm run e2e
+
+      - name: Capturas de tela das falhas
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: cypress-screenshots
+          path: frontend/cypress/screenshots
+          if-no-files-found: ignore
 
   gitleaks:
     name: Detecção de segredos (gitleaks)

@@ -18,6 +18,10 @@ const eslintConfig = [
       "out/**",
       "build/**",
       "next-env.d.ts",
+      ".next-cobertura/**",
+      "coverage/**",
+      "coverage-unit/**",
+      "cypress/screenshots/**",
     ],
   },
 ];

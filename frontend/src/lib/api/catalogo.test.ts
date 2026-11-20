@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { Peca } from "@/types/catalogo";
-import { filtrarPecas, normalizar, reservarPeca, statusAtual } from "./catalogo";
+import { filtrarPecas, liberarPeca, normalizar, reservarPeca, statusAtual } from "./catalogo";
 
 const base: Peca = {
   id: "p1",
@@ -64,32 +64,33 @@ describe("filtrarPecas", () => {
   });
 });
 
-describe("reservarPeca", () => {
+describe("reservarPeca e liberarPeca", () => {
   afterEach(() => vi.unstubAllGlobals());
 
-  it("não reserva uma peça que outra pessoa já reservou", async () => {
-    const reservada = peca({ status: "reservada", reservadaAte: new Date(Date.now() + 60_000).toISOString() });
+  it("pede a reserva ao servidor (POST /pecas/:id/reservar), que decide se ainda está livre", async () => {
+    const reservada = peca({ status: "reservada", reservadaAte: new Date(Date.now() + 15 * 60_000).toISOString() });
     const fetchFalso = vi.fn().mockResolvedValue(new Response(JSON.stringify(reservada)));
     vi.stubGlobal("fetch", fetchFalso);
 
-    await expect(reservarPeca("p1")).rejects.toThrow(/reservada ou vendida/);
-    expect(fetchFalso).toHaveBeenCalledTimes(1); // só leu, não tentou gravar
+    const resultado = await reservarPeca("p1");
+    expect(resultado.status).toBe("reservada");
+    expect(fetchFalso.mock.calls[0][0]).toBe("/api/pecas/p1/reservar");
+    expect(fetchFalso.mock.calls[0][1]).toMatchObject({ method: "POST" });
   });
 
-  it("reserva por 15 minutos uma peça disponível", async () => {
-    const fetchFalso = vi
-      .fn()
-      .mockResolvedValueOnce(new Response(JSON.stringify(peca({}))))
-      .mockImplementationOnce(async (_url: string, init: RequestInit) => new Response(init.body as string));
+  it("traduz 409 (outra pessoa reservou) e 404 (peça sumiu) em mensagens para a pessoa", async () => {
+    const resposta = (status: number) => new Response(JSON.stringify({ erro: "x" }), { status });
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValueOnce(resposta(409)).mockResolvedValueOnce(resposta(404)).mockResolvedValueOnce(resposta(500)));
+
+    await expect(reservarPeca("p1")).rejects.toThrow(/reservada ou vendida/);
+    await expect(reservarPeca("p1")).rejects.toThrow(/não existe mais/);
+    await expect(reservarPeca("p1")).rejects.toMatchObject({ status: 500 });
+  });
+
+  it("liberarPeca desfaz a reserva no servidor", async () => {
+    const fetchFalso = vi.fn().mockResolvedValue(new Response(JSON.stringify(peca({}))));
     vi.stubGlobal("fetch", fetchFalso);
-
-    const antes = Date.now();
-    const resultado = await reservarPeca("p1");
-    const minutos = (new Date(resultado.reservadaAte!).getTime() - antes) / 60_000;
-
-    expect(resultado.status).toBe("reservada");
-    expect(minutos).toBeGreaterThan(14.9);
-    expect(minutos).toBeLessThanOrEqual(15.01);
-    expect(fetchFalso.mock.calls[1][1]).toMatchObject({ method: "PATCH" });
+    await liberarPeca("p1");
+    expect(fetchFalso.mock.calls[0][0]).toBe("/api/pecas/p1/liberar");
   });
 });

@@ -1,7 +1,7 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useEffect, useState, type ChangeEvent, type FormEvent } from "react";
+import { useEffect, useState, type ChangeEvent, type FormEvent, type InputHTMLAttributes } from "react";
 import { buttonClasses } from "@/components/ui/Button";
 import { SectionHeading } from "@/components/ui/SectionHeading";
 import { buscarPeca } from "@/lib/api/catalogo";
@@ -14,6 +14,18 @@ import type { EnderecoEntrega } from "@/types/pedido";
 
 const campo =
   "h-12 w-full rounded-2xl border-2 border-roxo bg-white/70 px-4 text-roxo focus:bg-white focus:shadow-[3px_3px_0_0_var(--color-rosa)] focus:outline-none";
+
+/** Campo do checkout com rótulo visível (o placeholder sozinho não serve de rótulo: WCAG 3.3.2). */
+function Campo({ id, rotulo, ...props }: { id: string; rotulo: string } & InputHTMLAttributes<HTMLInputElement>) {
+  return (
+    <div>
+      <label htmlFor={id} className="mb-1.5 block text-sm font-medium text-roxo">
+        {rotulo}
+      </label>
+      <input id={id} name={id.replace("checkout-", "")} className={campo} {...props} />
+    </div>
+  );
+}
 
 const VAZIO = { nome: "", email: "", cep: "", logradouro: "", numero: "", complemento: "", bairro: "", cidade: "", uf: "" };
 
@@ -69,19 +81,12 @@ export default function CheckoutPage() {
       }
 
       const { nome, email, ...endereco } = dados;
-      const subtotal = subtotalSacola(itens);
-      const expiraEm = itens.map((i) => i.reservadaAte).sort()[0];
-      const pedido = await criarPedido(
-        {
-          comprador: { nome, email },
-          endereco: endereco as EnderecoEntrega,
-          itens: itens.map(({ id, titulo, precoCentavos }) => ({ id, titulo, precoCentavos })),
-          subtotalCentavos: subtotal,
-          freteCentavos: FRETE_FIXO_CENTAVOS,
-          totalCentavos: subtotal + FRETE_FIXO_CENTAVOS,
-        },
-        expiraEm,
-      );
+      // preço, frete e total são calculados pelo servidor a partir do catálogo
+      const pedido = await criarPedido({
+        comprador: { nome, email },
+        endereco: endereco as EnderecoEntrega,
+        itens: itens.map((i) => i.id),
+      });
       esvaziar();
       router.push(pedidoUrl(pedido.id));
     } catch (falha) {
@@ -101,34 +106,39 @@ export default function CheckoutPage() {
 
         <fieldset className="space-y-3">
           <legend className="mb-3 text-xs font-bold tracking-[0.18em] text-violeta uppercase">1 · seus dados</legend>
-          <input required className={campo} placeholder="nome completo" autoComplete="name" value={dados.nome} onChange={mudar("nome")} />
-          <input required type="email" className={campo} placeholder="e-mail" autoComplete="email" value={dados.email} onChange={mudar("email")} />
+          <Campo id="checkout-nome" rotulo="nome completo" required autoComplete="name" value={dados.nome} onChange={mudar("nome")} />
+          <Campo id="checkout-email" rotulo="e-mail" required type="email" autoComplete="email" value={dados.email} onChange={mudar("email")} />
         </fieldset>
 
         <fieldset className="space-y-3">
           <legend className="mb-3 text-xs font-bold tracking-[0.18em] text-violeta uppercase">2 · entrega</legend>
           <div className="grid gap-3 sm:grid-cols-[180px_1fr]">
-            <input
+            <Campo
+              id="checkout-cep"
+              rotulo="CEP"
               required
-              className={campo}
-              placeholder="CEP"
+              placeholder="00000-000"
               inputMode="numeric"
               maxLength={9}
               autoComplete="postal-code"
+              aria-describedby="checkout-cep-status"
               value={dados.cep}
               onChange={mudar("cep")}
               onBlur={completarCep}
             />
-            <input required className={campo} placeholder={buscandoCep ? "buscando endereço…" : "rua / avenida"} value={dados.logradouro} onChange={mudar("logradouro")} />
+            <Campo id="checkout-logradouro" rotulo="rua / avenida" required autoComplete="address-line1" value={dados.logradouro} onChange={mudar("logradouro")} />
           </div>
+          <p id="checkout-cep-status" aria-live="polite" className="min-h-5 text-sm text-roxo-soft">
+            {buscandoCep ? "buscando endereço pelo CEP…" : ""}
+          </p>
           <div className="grid gap-3 sm:grid-cols-[120px_1fr]">
-            <input required className={campo} placeholder="número" value={dados.numero} onChange={mudar("numero")} />
-            <input className={campo} placeholder="complemento (opcional)" value={dados.complemento} onChange={mudar("complemento")} />
+            <Campo id="checkout-numero" rotulo="número" required autoComplete="address-line2" value={dados.numero} onChange={mudar("numero")} />
+            <Campo id="checkout-complemento" rotulo="complemento (opcional)" autoComplete="address-line3" value={dados.complemento} onChange={mudar("complemento")} />
           </div>
           <div className="grid gap-3 sm:grid-cols-[1fr_1fr_90px]">
-            <input required className={campo} placeholder="bairro" value={dados.bairro} onChange={mudar("bairro")} />
-            <input required className={campo} placeholder="cidade" value={dados.cidade} onChange={mudar("cidade")} />
-            <input required className={campo} placeholder="UF" maxLength={2} value={dados.uf} onChange={mudar("uf")} />
+            <Campo id="checkout-bairro" rotulo="bairro" required value={dados.bairro} onChange={mudar("bairro")} />
+            <Campo id="checkout-cidade" rotulo="cidade" required autoComplete="address-level2" value={dados.cidade} onChange={mudar("cidade")} />
+            <Campo id="checkout-uf" rotulo="UF" required maxLength={2} autoComplete="address-level1" value={dados.uf} onChange={mudar("uf")} />
           </div>
         </fieldset>
 

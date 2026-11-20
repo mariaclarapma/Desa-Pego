@@ -1,0 +1,24 @@
+{
+  "temp-dir": ".nyc_output",
+  "report-dir": "coverage",
+  "reporter": [
+    "html",
+    "text-summary",
+    "json-summary"
+  ],
+  "include": [
+    "frontend/src/**",
+    "backend/contas/src/**",
+    "backend/catalogo/src/**",
+    "backend/comum/**"
+  ],
+  "exclude": [
+    "**/*.test.ts",
+    "**/*.test.tsx",
+    "frontend/src/test/**",
+    "backend/contas/src/banco-teste.ts"
+  ],
+  "check-coverage": true,
+  "lines": 80,
+  "statements": 80
+}

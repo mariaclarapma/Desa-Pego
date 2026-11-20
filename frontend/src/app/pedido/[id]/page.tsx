@@ -6,10 +6,11 @@ import { Contagem } from "@/components/sacola/Contagem";
 import { ApiIndisponivel } from "@/components/ui/ApiIndisponivel";
 import { buttonClasses, ButtonLink } from "@/components/ui/Button";
 import { Sticker } from "@/components/ui/Sticker";
-import { buscarPedido, confirmarPagamentoSimulado } from "@/lib/api/pedidos";
+import { buscarPedido } from "@/lib/api/pedidos";
 import { formatarPreco } from "@/lib/format";
 import { catalogoUrl } from "@/lib/routes";
 import type { Pedido } from "@/types/pedido";
+import { confirmarPagamentoDemo } from "./acoes";
 
 /** QR Code ilustrativo (não é um QR real): desenha quadradinhos a partir do código Pix. */
 function QrIlustrativo({ codigo }: { codigo: string }) {
@@ -38,6 +39,7 @@ export default function PedidoPage() {
   const [pedido, setPedido] = useState<Pedido | null>(null);
   const [falhou, setFalhou] = useState(false);
   const [pagando, setPagando] = useState(false);
+  const [erroPagamento, setErroPagamento] = useState("");
   const [copiado, setCopiado] = useState(false);
 
   const carregar = useCallback(() => {
@@ -48,8 +50,14 @@ export default function PedidoPage() {
   async function simularPagamento() {
     if (!pedido) return;
     setPagando(true);
-    setPedido(await confirmarPagamentoSimulado(pedido));
-    setPagando(false);
+    setErroPagamento("");
+    try {
+      setPedido(await confirmarPagamentoDemo(pedido.id));
+    } catch (erro) {
+      setErroPagamento(erro instanceof Error ? erro.message : "não deu para confirmar o pagamento.");
+    } finally {
+      setPagando(false);
+    }
   }
 
   async function copiar() {
@@ -101,6 +109,11 @@ export default function PedidoPage() {
               {pagando ? "confirmando…" : "simular pagamento (demo)"}
             </button>
           </div>
+          {erroPagamento ? (
+            <p role="alert" className="text-sm font-medium text-magenta">
+              {erroPagamento}
+            </p>
+          ) : null}
         </div>
       )}
 
