@@ -69,19 +69,12 @@ export default function CheckoutPage() {
       }
 
       const { nome, email, ...endereco } = dados;
-      const subtotal = subtotalSacola(itens);
-      const expiraEm = itens.map((i) => i.reservadaAte).sort()[0];
-      const pedido = await criarPedido(
-        {
-          comprador: { nome, email },
-          endereco: endereco as EnderecoEntrega,
-          itens: itens.map(({ id, titulo, precoCentavos }) => ({ id, titulo, precoCentavos })),
-          subtotalCentavos: subtotal,
-          freteCentavos: FRETE_FIXO_CENTAVOS,
-          totalCentavos: subtotal + FRETE_FIXO_CENTAVOS,
-        },
-        expiraEm,
-      );
+      // preço, frete e total são calculados pelo servidor a partir do catálogo
+      const pedido = await criarPedido({
+        comprador: { nome, email },
+        endereco: endereco as EnderecoEntrega,
+        itens: itens.map((i) => i.id),
+      });
       esvaziar();
       router.push(pedidoUrl(pedido.id));
     } catch (falha) {

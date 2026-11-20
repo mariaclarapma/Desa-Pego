@@ -1,4 +1,3 @@
-import { RESERVA_MINUTOS } from "@/lib/config";
 import type { CategoriaSlug, Condicao, Peca, StatusPeca } from "@/types/catalogo";
 import { api, ApiErro } from "./cliente";
 
@@ -13,9 +12,6 @@ export async function buscarPeca(id: string): Promise<Peca | null> {
   }
 }
 
-const atualizarPeca = (id: string, dados: Partial<Peca>) =>
-  api<Peca>(`/pecas/${encodeURIComponent(id)}`, { method: "PATCH", json: dados });
-
 /** Uma reserva vencida volta a contar como disponível (o "job de limpeza" da arquitetura). */
 export function statusAtual(peca: Pick<Peca, "status" | "reservadaAte">, agora = new Date()): StatusPeca {
   if (peca.status === "reservada" && peca.reservadaAte && new Date(peca.reservadaAte) <= agora) {
@@ -25,23 +21,21 @@ export function statusAtual(peca: Pick<Peca, "status" | "reservadaAte">, agora =
 }
 
 /**
- * Reserva a peça única por RESERVA_MINUTOS (ADR-003).
- * Relê a peça do servidor e só reserva se ela estiver disponível.
- * No backend real isto é um `UPDATE ... WHERE status = 'disponivel'` atômico;
- * o json-server não tem transações, então aqui a garantia é só didática.
+ * Reserva a peça única por 15 minutos (ADR-003). Quem decide é o servidor: ele confere,
+ * numa fila, se a peça continua disponível (409 se outra pessoa reservou antes).
  */
 export async function reservarPeca(id: string): Promise<Peca> {
-  const peca = await buscarPeca(id);
-  if (!peca) throw new Error("Essa peça não existe mais.");
-  if (statusAtual(peca) !== "disponivel") {
-    throw new Error("Essa peça acabou de ser reservada ou vendida por outra pessoa.");
+  try {
+    return await api<Peca>(`/pecas/${encodeURIComponent(id)}/reservar`, { method: "POST" });
+  } catch (erro) {
+    if (erro instanceof ApiErro && erro.status === 409) throw new Error("Essa peça acabou de ser reservada ou vendida por outra pessoa.");
+    if (erro instanceof ApiErro && erro.status === 404) throw new Error("Essa peça não existe mais.");
+    throw erro;
   }
-  const reservadaAte = new Date(Date.now() + RESERVA_MINUTOS * 60_000).toISOString();
-  return atualizarPeca(id, { status: "reservada", reservadaAte });
 }
 
-export const liberarPeca = (id: string) => atualizarPeca(id, { status: "disponivel", reservadaAte: null });
-export const marcarVendida = (id: string) => atualizarPeca(id, { status: "vendida", reservadaAte: null });
+/** Desfaz a reserva (ao tirar a peça da sacola). Uma peça vendida continua vendida. */
+export const liberarPeca = (id: string) => api<Peca>(`/pecas/${encodeURIComponent(id)}/liberar`, { method: "POST" });
 
 export type Ordem = "recentes" | "menor-preco" | "maior-preco";
 
