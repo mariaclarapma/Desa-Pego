@@ -52,7 +52,7 @@ jobs:
       - uses: actions/setup-node@v4
         if: hashFiles('package-lock.json') != ''
         with:
-          node-version: 20
+          node-version: 22
           cache: npm
 
       - name: Instalar dependências
@@ -63,7 +63,11 @@ jobs:
         if: hashFiles('package-lock.json') != ''
         run: npm run lint
 
-      - name: Testes (Jest)
+      - name: Typecheck
+        if: hashFiles('package-lock.json') != ''
+        run: npm run typecheck
+
+      - name: Testes (Vitest)
         if: hashFiles('package-lock.json') != ''
         run: npm test
 

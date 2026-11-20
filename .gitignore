@@ -8,3 +8,26 @@ coverage/
 .env
 .env.*
 !.env.example
+
+# builds e caches do Next.js / TypeScript
+out/
+build/
+*.tsbuildinfo
+next-env.d.ts
+.vercel
+*.pem
+.DS_Store
+
+# banco da API simulada (gerado a partir de backend/db.seed.json)
+backend/db.json
+
+# banco do serviço de contas: tem hashes de senha e sessões, nunca vai para o Git
+backend/contas/dados/
+*.sqlite
+*.sqlite-wal
+*.sqlite-shm
+
+# configuração local do editor e do Claude
+.vscode/*
+!.vscode/extensions.json
+.claude/

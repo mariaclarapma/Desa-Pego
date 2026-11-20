@@ -206,7 +206,44 @@ As permissões são validadas no backend, por perfil e por posse do recurso (ex.
 
 ## Como rodar localmente
 
-> Em breve. Assim que os módulos tiverem código, esta seção vai trazer o passo a passo com Docker Compose (PostgreSQL, Redis e MinIO sobem com um comando) e o Pix simulado para testar o fluxo de compra sem cobrança real.
+A primeira versão do código (seminário de Desenvolvimento Web do CEUB) roda sem Docker: o frontend é Next.js e o
+backend tem o **serviço de contas** (Express + TypeScript + SQLite nativo do Node, no lugar de NestJS + PostgreSQL)
+e um catálogo simulado com json-server.
+
+Requer **Node.js 22.13 ou mais novo** (o banco de contas usa o SQLite nativo do Node).
+
+```bash
+npm install      # instala frontend e backend (npm workspaces)
+npm run dev      # frontend em http://localhost:3000 · catálogo em :3001 · contas em :3002
+```
+
+| Comando (na raiz) | O que faz |
+| --- | --- |
+| `npm test` | testes do frontend e do backend (Vitest + Supertest) |
+| `npm run lint` / `npm run typecheck` / `npm run build` | lint, checagem de tipos e build de produção |
+| `npm run reset-contas` | apaga as contas de teste (com o `npm run dev` parado) |
+| `npm run reset-db` | volta o catálogo ao estado inicial |
+
+O banco de contas fica em `backend/contas/dados/` e **nunca vai para o Git** (tem hashes de senha e sessões).
+Em produção, defina `JWT_SECRET` em `backend/.env` (veja [`backend/.env.example`](backend/.env.example)).
+
+### Contas: autenticação e CRUD de usuários (Módulo 01, [#1](../../issues/1))
+
+| Operação | Tela | Rota da API | Regras |
+| --- | --- | --- | --- |
+| **Create** | `/cadastro` | `POST /auth/cadastro` | nome e sobrenome, e-mail válido e único, senha com 8+ caracteres, letra e número; hash Argon2id |
+| **Login / logout** | `/entrar`, botão **sair da conta** | `POST /auth/login`, `POST /auth/logout` | JWT de 15 min na memória + refresh token rotativo em cookie httpOnly; mensagem de erro genérica; 5 erros bloqueiam por 15 min |
+| **Read** | `/conta` (rota privada) | `GET /auth/me` | só a conta dona do token; nunca devolve senha nem hash; sem sessão, volta para `/entrar` |
+| **Update** | `/conta` → **editar dados** | `PATCH /auth/me` | o nome muda sem senha; trocar o e-mail pede a senha atual e não pode usar o e-mail de outra conta |
+| **Update** | `/conta` → **alterar senha** | `PUT /auth/me/senha` | confere a senha atual; a nova precisa ser forte e diferente; encerra as sessões dos outros aparelhos |
+| **Delete** | `/conta` → **excluir minha conta** | `DELETE /auth/me` | confirmação + senha; exclusão definitiva, todas as sessões encerradas e cookie apagado |
+
+Roteiro rápido: crie uma conta em `/cadastro` → veja os dados em `/conta` → edite o nome → troque o e-mail (com a
+senha) → troque a senha → saia e entre com a senha nova → exclua a conta.
+
+Detalhes da API em [`backend/README.md`](backend/README.md) e da interface em [`frontend/README.md`](frontend/README.md).
+Testes: `backend/contas/src/app.test.ts` (cadastro, login e sessão), `backend/contas/src/crud.test.ts` (as quatro
+operações) e `frontend/src/app/conta/crud.test.tsx` (telas da conta).
 
 ## O que estou aprendendo
 

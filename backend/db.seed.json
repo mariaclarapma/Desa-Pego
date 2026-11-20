@@ -1,0 +1,258 @@
+{
+  "pecas": [
+    {
+      "id": "demo-jaqueta-couro",
+      "titulo": "Jaqueta de couro preta",
+      "marca": "vintage anos 90",
+      "categoria": "feminino",
+      "tamanho": "M",
+      "condicao": "otimo_estado",
+      "precoCentavos": 18990,
+      "fotoUrl": "https://images.unsplash.com/photo-1551028719-00167b16eac5?auto=format&fit=crop&w=800&q=80",
+      "fotoAlt": "Jaqueta de couro preta com zíperes num cabide sobre lençol branco",
+      "vendedor": {
+        "nomePublico": "Bia",
+        "cidade": "Brasília, DF"
+      },
+      "descricao": "Couro legítimo, forro íntegro e zíperes funcionando. Modelagem reta, dá pra usar fechada ou aberta.",
+      "medidas": {
+        "ombro": 42,
+        "busto": 98,
+        "comprimento": 60
+      },
+      "status": "disponivel",
+      "reservadaAte": null,
+      "criadoEm": "2026-11-18T12:00:00.000Z"
+    },
+    {
+      "id": "demo-bolsa-cereja",
+      "titulo": "Bolsa de mão vermelho-cereja",
+      "marca": "sem marca",
+      "categoria": "bolsas",
+      "tamanho": "único",
+      "condicao": "nova_com_etiqueta",
+      "precoCentavos": 14900,
+      "fotoUrl": "https://images.unsplash.com/photo-1584917865442-de89df76afd3?auto=format&fit=crop&w=800&q=80",
+      "fotoAlt": "Bolsa de mão vermelha estruturada com fecho prateado",
+      "vendedor": {
+        "nomePublico": "Lu",
+        "cidade": "São Paulo, SP"
+      },
+      "descricao": "Nunca usada, ainda com etiqueta. Estruturada, com fecho prateado e alça de mão.",
+      "medidas": {
+        "largura": 26,
+        "altura": 18,
+        "profundidade": 9
+      },
+      "status": "disponivel",
+      "reservadaAte": null,
+      "criadoEm": "2026-11-17T12:00:00.000Z"
+    },
+    {
+      "id": "demo-scarpin-floral",
+      "titulo": "Scarpin floral bico fino",
+      "marca": "ateliê local",
+      "categoria": "calcados",
+      "tamanho": "36",
+      "condicao": "otimo_estado",
+      "precoCentavos": 12990,
+      "fotoUrl": "https://images.unsplash.com/photo-1543163521-1bf539c55dd2?auto=format&fit=crop&w=800&q=80",
+      "fotoAlt": "Par de scarpins com estampa floral azul e vermelha sobre fundo azul claro",
+      "vendedor": {
+        "nomePublico": "Mari",
+        "cidade": "Belo Horizonte, MG"
+      },
+      "descricao": "Usado duas vezes. Salto 7 cm, solado sem desgaste.",
+      "medidas": {
+        "salto": 7,
+        "palmilha": 23.5
+      },
+      "status": "disponivel",
+      "reservadaAte": null,
+      "criadoEm": "2026-11-16T12:00:00.000Z"
+    },
+    {
+      "id": "demo-bomber-caramelo",
+      "titulo": "Jaqueta bomber caramelo",
+      "marca": "sem marca",
+      "categoria": "masculino",
+      "tamanho": "G",
+      "condicao": "bom_estado",
+      "precoCentavos": 9990,
+      "fotoUrl": "https://images.unsplash.com/photo-1591047139829-d91aecb6caea?auto=format&fit=crop&w=800&q=80",
+      "fotoAlt": "Jaqueta bomber cor caramelo pendurada num cabide",
+      "vendedor": {
+        "nomePublico": "Rafa",
+        "cidade": "Recife, PE"
+      },
+      "descricao": "Punhos e barra em ribana, leve desbotado na gola (aparece nas fotos).",
+      "medidas": {
+        "ombro": 50,
+        "busto": 116,
+        "comprimento": 68
+      },
+      "status": "disponivel",
+      "reservadaAte": null,
+      "criadoEm": "2026-11-15T12:00:00.000Z"
+    },
+    {
+      "id": "demo-bolsa-palha",
+      "titulo": "Bolsa de palha com alça",
+      "marca": "feito à mão",
+      "categoria": "bolsas",
+      "tamanho": "único",
+      "condicao": "otimo_estado",
+      "precoCentavos": 8990,
+      "fotoUrl": "https://images.unsplash.com/photo-1590874103328-eac38a683ce7?auto=format&fit=crop&w=800&q=80",
+      "fotoAlt": "Bolsa de palha trançada com tampa e alça de couro laranja",
+      "vendedor": {
+        "nomePublico": "Helô",
+        "cidade": "Salvador, BA"
+      },
+      "descricao": "Palha trançada à mão, alça de couro e fecho de botão. Perfeita pra praia.",
+      "medidas": {
+        "largura": 30,
+        "altura": 22
+      },
+      "status": "disponivel",
+      "reservadaAte": null,
+      "criadoEm": "2026-11-14T12:00:00.000Z"
+    },
+    {
+      "id": "demo-jogger-cetim",
+      "titulo": "Calça jogger de cetim rosé",
+      "marca": "sem marca",
+      "categoria": "feminino",
+      "tamanho": "P",
+      "condicao": "nova_com_etiqueta",
+      "precoCentavos": 7990,
+      "fotoUrl": "https://images.unsplash.com/photo-1594633312681-425c7b97ccd1?auto=format&fit=crop&w=800&q=80",
+      "fotoAlt": "Calça jogger rosé de cetim com bolsos, usada com sandália de salto",
+      "vendedor": {
+        "nomePublico": "Nina",
+        "cidade": "Curitiba, PR"
+      },
+      "descricao": "Cetim com caimento fluido, elástico na cintura e na barra, dois bolsos.",
+      "medidas": {
+        "cintura": 64,
+        "quadril": 96,
+        "comprimento": 96
+      },
+      "status": "disponivel",
+      "reservadaAte": null,
+      "criadoEm": "2026-11-13T12:00:00.000Z"
+    },
+    {
+      "id": "demo-poncho-trico",
+      "titulo": "Poncho de tricô com franjas",
+      "marca": "feito à mão",
+      "categoria": "feminino",
+      "tamanho": "único",
+      "condicao": "com_marcas_de_uso",
+      "precoCentavos": 5990,
+      "fotoUrl": "https://images.unsplash.com/photo-1434389677669-e08b4cac3105?auto=format&fit=crop&w=800&q=80",
+      "fotoAlt": "Poncho de tricô cru com franjas pendurado num cabide",
+      "vendedor": {
+        "nomePublico": "Clara",
+        "cidade": "Porto Alegre, RS"
+      },
+      "descricao": "Tricô grosso cor cru. Tem algumas bolinhas de uso, nada que atrapalhe.",
+      "medidas": {
+        "comprimento": 70
+      },
+      "status": "disponivel",
+      "reservadaAte": null,
+      "criadoEm": "2026-11-12T12:00:00.000Z"
+    },
+    {
+      "id": "demo-vestido-floral",
+      "titulo": "Vestido midi floral vermelho",
+      "marca": "vintage",
+      "categoria": "feminino",
+      "tamanho": "M",
+      "condicao": "otimo_estado",
+      "precoCentavos": 11990,
+      "fotoUrl": "https://images.unsplash.com/photo-1572804013309-59a88b7e92f1?auto=format&fit=crop&w=800&q=80",
+      "fotoAlt": "Mulher sorrindo com vestido midi vermelho estampado e cinto sobre fundo amarelo",
+      "vendedor": {
+        "nomePublico": "Livia",
+        "cidade": "Rio de Janeiro, RJ"
+      },
+      "descricao": "Viscose leve, acompanha o cinto. Comprimento abaixo do joelho.",
+      "medidas": {
+        "busto": 90,
+        "cintura": 72,
+        "comprimento": 115
+      },
+      "status": "disponivel",
+      "reservadaAte": null,
+      "criadoEm": "2026-11-11T12:00:00.000Z"
+    },
+    {
+      "id": "demo-bolsa-rosa",
+      "titulo": "Bolsa rosa com corrente",
+      "marca": "sem marca",
+      "categoria": "bolsas",
+      "tamanho": "único",
+      "condicao": "otimo_estado",
+      "precoCentavos": 9490,
+      "fotoUrl": "https://images.unsplash.com/photo-1566150905458-1bf1fc113f0d?auto=format&fit=crop&w=800&q=80",
+      "fotoAlt": "Bolsa rosa com faixas amarela e branca e alça de corrente",
+      "vendedor": {
+        "nomePublico": "Duda",
+        "cidade": "Goiânia, GO"
+      },
+      "descricao": "Alça de corrente removível, cabe celular, carteira e chave.",
+      "medidas": {
+        "largura": 22,
+        "altura": 15
+      },
+      "status": "disponivel",
+      "reservadaAte": null,
+      "criadoEm": "2026-11-10T12:00:00.000Z"
+    },
+    {
+      "id": "demo-tenis-pastel",
+      "titulo": "Tênis colorido em tons pastel",
+      "marca": "sem marca",
+      "categoria": "calcados",
+      "tamanho": "37",
+      "condicao": "bom_estado",
+      "precoCentavos": 13900,
+      "fotoUrl": "https://images.unsplash.com/photo-1595950653106-6c9ebd614d3a?auto=format&fit=crop&w=800&q=80",
+      "fotoAlt": "Tênis em tons pastel de rosa, lilás e azul",
+      "vendedor": {
+        "nomePublico": "Gabi",
+        "cidade": "Florianópolis, SC"
+      },
+      "descricao": "Solado com marcas de uso, cabedal limpo. Cadarço novo.",
+      "medidas": {
+        "palmilha": 24
+      },
+      "status": "disponivel",
+      "reservadaAte": null,
+      "criadoEm": "2026-11-09T12:00:00.000Z"
+    },
+    {
+      "id": "demo-oculos-redondo",
+      "titulo": "Óculos de sol redondo dourado",
+      "marca": "vintage",
+      "categoria": "acessorios",
+      "tamanho": "único",
+      "condicao": "nova_com_etiqueta",
+      "precoCentavos": 6990,
+      "fotoUrl": "https://images.unsplash.com/photo-1511499767150-a48a237f0083?auto=format&fit=crop&w=800&q=80",
+      "fotoAlt": "Óculos de sol redondo com armação dourada e lentes escuras",
+      "vendedor": {
+        "nomePublico": "Tati",
+        "cidade": "Fortaleza, CE"
+      },
+      "descricao": "Lentes sem riscos, acompanha estojo.",
+      "medidas": {},
+      "status": "disponivel",
+      "reservadaAte": null,
+      "criadoEm": "2026-11-08T12:00:00.000Z"
+    }
+  ],
+  "pedidos": []
+}
