@@ -61,7 +61,12 @@ export default function CarrinhoPage() {
               </div>
               <div className="flex flex-col items-end justify-between">
                 <p className="font-display text-xl font-semibold">{formatarPreco(item.precoCentavos)}</p>
-                <button type="button" onClick={() => remover(item.id)} className="text-sm text-roxo-soft underline hover:text-violeta">
+                <button
+                  type="button"
+                  onClick={() => remover(item.id)}
+                  aria-label={`remover ${item.titulo} da sacola`}
+                  className="text-sm text-roxo-soft underline hover:text-violeta"
+                >
                   remover
                 </button>
               </div>

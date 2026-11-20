@@ -101,6 +101,8 @@ export function SiteFooter() {
 
         <div
           aria-hidden="true"
+          // marca d'água decorativa: o WCAG 1.4.3 isenta texto puramente decorativo do contraste mínimo
+          data-decorativo
           className="mt-16 flex items-center justify-center gap-4 pb-[0.06em] font-display text-[22vw] leading-none font-semibold tracking-[-0.06em] text-nevoa/10 select-none lg:text-[17rem]"
         >
           <span>

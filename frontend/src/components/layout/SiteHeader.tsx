@@ -90,12 +90,13 @@ export function SiteHeader() {
             >
               <IconUser />
             </Link>
+            {/* nome acessível pelo texto (e não aria-label): inclui o número visível da bolinha (WCAG 2.5.3) */}
             <Link
               href={ROUTES.carrinho}
-              aria-label="Sacola de compras"
               className="relative grid size-10 place-items-center rounded-full text-roxo transition-colors hover:bg-rosa-100"
             >
               <IconBag />
+              <span className="sr-only">Sacola de compras</span>
               <SacolaBadge />
             </Link>
           </nav>
