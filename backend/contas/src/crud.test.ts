@@ -1,7 +1,7 @@
 import request from "supertest";
 import { beforeEach, describe, expect, it } from "vitest";
 import { criarApp } from "./app.js";
-import { abrirBanco, type Banco } from "./banco.js";
+import { usarBancoDeTeste } from "./banco-teste.js";
 import type { Config } from "./config.js";
 
 /**
@@ -10,26 +10,25 @@ import type { Config } from "./config.js";
  */
 const config: Config = {
   porta: 0,
-  arquivoBanco: ":memory:",
   jwtSegredo: new TextEncoder().encode("segredo-de-teste-com-mais-de-32-caracteres"),
   acessoMinutos: 15,
   refreshDias: 30,
   cookieNome: "desapego_refresh",
   cookiePath: "/auth",
   cookieSeguro: false,
+  trustProxy: "loopback",
 };
 
 const ANA = { nome: "Ana Souza", email: "ana@exemplo.com", senha: "garimpo123" };
 const BEA = { nome: "Bea Lima", email: "bea@exemplo.com", senha: "brecho2026" };
 
-let banco: Banco;
+const lerBanco = usarBancoDeTeste();
 let relogio: number;
 let app: ReturnType<typeof criarApp>;
 
 beforeEach(() => {
-  banco = abrirBanco(":memory:");
   relogio = Date.now();
-  app = criarApp(banco, config, () => relogio);
+  app = criarApp(lerBanco(), config, () => relogio);
 });
 
 const cookieRefresh = (res: request.Response) =>
@@ -47,7 +46,7 @@ const bearer = (token: string) => ({ Authorization: `Bearer ${token}` });
 describe("CREATE: POST /auth/cadastro", () => {
   it("cria a conta e grava no banco", async () => {
     const { id } = await criarConta();
-    expect(banco.usuarioPorId(id)).toMatchObject({ nome: "Ana Souza", email: "ana@exemplo.com", perfil: "USUARIO" });
+    expect(await lerBanco().usuarioPorId(id)).toMatchObject({ nome: "Ana Souza", email: "ana@exemplo.com", perfil: "USUARIO" });
   });
 });
 
@@ -71,7 +70,7 @@ describe("UPDATE: PATCH /auth/me (nome e e-mail)", () => {
 
     expect(res.body.usuario).toEqual({ id, nome: "Ana Paula Souza", email: "ana@exemplo.com" });
     expect(res.body.accessToken).toMatch(/^ey/);
-    expect(banco.usuarioPorId(id)!.nome).toBe("Ana Paula Souza");
+    expect((await lerBanco().usuarioPorId(id))!.nome).toBe("Ana Paula Souza");
   });
 
   it("trocar o e-mail exige a senha atual", async () => {
@@ -81,7 +80,7 @@ describe("UPDATE: PATCH /auth/me (nome e e-mail)", () => {
     const semSenha = await request(app).patch("/auth/me").set(bearer(token)).send(novo).expect(403);
     expect(semSenha.body.campos.senhaAtual).toBe("senha atual incorreta.");
     await request(app).patch("/auth/me").set(bearer(token)).send({ ...novo, senhaAtual: "errada123" }).expect(403);
-    expect(banco.usuarioPorId(id)!.email).toBe("ana@exemplo.com");
+    expect((await lerBanco().usuarioPorId(id))!.email).toBe("ana@exemplo.com");
 
     const ok = await request(app).patch("/auth/me").set(bearer(token)).send({ ...novo, senhaAtual: ANA.senha }).expect(200);
     expect(ok.body.usuario.email).toBe("ana.nova@exemplo.com");
@@ -118,14 +117,14 @@ describe("UPDATE: PUT /auth/me/senha", () => {
     // outra sessão aberta em outro aparelho
     const outroAparelho = request.agent(app);
     await outroAparelho.post("/auth/login").send(ANA).expect(200);
-    const hashAntigo = banco.usuarioPorId(id)!.senha_hash;
+    const hashAntigo = (await lerBanco().usuarioPorId(id))!.senha_hash;
 
     const res = await cliente.put("/auth/me/senha").set(bearer(token)).send({ senhaAtual: ANA.senha, novaSenha: "novaSenha456" }).expect(200);
     expect(res.body.accessToken).toMatch(/^ey/);
     expect(cookieRefresh(res)).toBeDefined();
     expect(JSON.stringify(res.body)).not.toContain("novaSenha456");
 
-    const hashNovo = banco.usuarioPorId(id)!.senha_hash;
+    const hashNovo = (await lerBanco().usuarioPorId(id))!.senha_hash;
     expect(hashNovo).toMatch(/^\$argon2id\$/);
     expect(hashNovo).not.toBe(hashAntigo);
 
@@ -170,7 +169,7 @@ describe("DELETE: DELETE /auth/me", () => {
     const res = await cliente.delete("/auth/me").set(bearer(token)).send({ senha: ANA.senha }).expect(204);
     expect(cookieRefresh(res)).toMatch(/Expires=Thu, 01 Jan 1970/);
 
-    expect(banco.usuarioPorId(id)).toBeUndefined();
+    expect(await lerBanco().usuarioPorId(id)).toBeUndefined();
     // nenhuma sessão sobrevive: nem o token de acesso, nem os refresh tokens dos aparelhos
     await request(app).get("/auth/me").set(bearer(token)).expect(401);
     await outroAparelho.post("/auth/refresh").expect(401);
@@ -188,7 +187,7 @@ describe("DELETE: DELETE /auth/me", () => {
     const semSenha = await request(app).delete("/auth/me").set(bearer(token)).expect(400);
     expect(semSenha.body.campos.senha).toBe("informe sua senha atual.");
     await request(app).delete("/auth/me").set(bearer(token)).send({ senha: "errada123" }).expect(403);
-    expect(banco.usuarioPorId(id)).toBeDefined();
+    expect(await lerBanco().usuarioPorId(id)).toBeDefined();
   });
 
   it("exige autenticação", async () => {
@@ -200,6 +199,6 @@ describe("DELETE: DELETE /auth/me", () => {
     const { token } = await criarConta();
     // o token da Ana só alcança a conta da Ana, mesmo com a senha da Bea
     await request(app).delete("/auth/me").set(bearer(token)).send({ senha: BEA.senha }).expect(403);
-    expect(banco.usuarioPorId(bea.id)).toBeDefined();
+    expect(await lerBanco().usuarioPorId(bea.id)).toBeDefined();
   });
 });

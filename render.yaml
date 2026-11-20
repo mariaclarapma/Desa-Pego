@@ -1,0 +1,30 @@
+# Hospedagem no Render (plano grátis): um único serviço roda o site (Next.js), o serviço de contas
+# e o catálogo, como no `npm run dev`. As contas ficam no PostgreSQL do Supabase (DATABASE_URL).
+# Passo a passo no README, seção "Hospedagem".
+services:
+  - type: web
+    name: desapego
+    runtime: node
+    plan: free
+    # mesma região do banco no Supabase (us-east-1, N. Virginia): menos atraso em cada consulta
+    region: virginia
+    branch: main
+    # --include=dev: o build do Next.js e o tsx (que roda o serviço de contas) são devDependencies
+    buildCommand: npm ci --include=dev && npm run build
+    startCommand: npm start
+    # passa pelo site e pelo proxy até o serviço de contas: se responder, está tudo de pé
+    healthCheckPath: /api/auth/saude
+    envVars:
+      - key: NODE_VERSION
+        value: "22"
+      - key: NODE_ENV
+        value: production
+      # o Render gera um segredo aleatório na criação; não precisa mexer
+      - key: JWT_SECRET
+        generateValue: true
+      # cole a URL do Supabase (Connect → Session pooler) no painel; nunca no repositório
+      - key: DATABASE_URL
+        sync: false
+      # o Next.js (loopback) e o balanceador do Render (rede interna) ficam na frente do serviço de contas
+      - key: TRUST_PROXY
+        value: loopback, uniquelocal

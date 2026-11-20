@@ -207,10 +207,10 @@ As permissões são validadas no backend, por perfil e por posse do recurso (ex.
 ## Como rodar localmente
 
 A primeira versão do código (seminário de Desenvolvimento Web do CEUB) roda sem Docker: o frontend é Next.js e o
-backend tem o **serviço de contas** (Express + TypeScript + SQLite nativo do Node, no lugar de NestJS + PostgreSQL)
-e um catálogo simulado com json-server.
+backend tem o **serviço de contas** (Express + TypeScript + PostgreSQL, no lugar de NestJS) e um catálogo
+simulado com json-server.
 
-Requer **Node.js 22.13 ou mais novo** (o banco de contas usa o SQLite nativo do Node).
+Requer **Node.js 22.13 ou mais novo**.
 
 ```bash
 npm install      # instala frontend e backend (npm workspaces)
@@ -221,11 +221,12 @@ npm run dev      # frontend em http://localhost:3000 · catálogo em :3001 · co
 | --- | --- |
 | `npm test` | testes do frontend e do backend (Vitest + Supertest) |
 | `npm run lint` / `npm run typecheck` / `npm run build` | lint, checagem de tipos e build de produção |
-| `npm run reset-contas` | apaga as contas de teste (com o `npm run dev` parado) |
 | `npm run reset-db` | volta o catálogo ao estado inicial |
+| `npm start` | modo produção (depois do `npm run build`): site, contas e catálogo juntos, como na hospedagem |
 
-O banco de contas fica em `backend/contas/dados/` e **nunca vai para o Git** (tem hashes de senha e sessões).
-Em produção, defina `JWT_SECRET` em `backend/.env` (veja [`backend/.env.example`](backend/.env.example)).
+Sem configurar nada, as contas ficam num Postgres **em memória** e somem quando o servidor reinicia. Para
+guardá-las, copie [`backend/.env.example`](backend/.env.example) para `backend/.env` e preencha `DATABASE_URL`
+(por exemplo, com o banco do Supabase; veja abaixo). O `.env` **nunca vai para o Git**.
 
 ### Contas: autenticação e CRUD de usuários (Módulo 01, [#1](../../issues/1))
 
@@ -244,6 +245,35 @@ senha) → troque a senha → saia e entre com a senha nova → exclua a conta.
 Detalhes da API em [`backend/README.md`](backend/README.md) e da interface em [`frontend/README.md`](frontend/README.md).
 Testes: `backend/contas/src/app.test.ts` (cadastro, login e sessão), `backend/contas/src/crud.test.ts` (as quatro
 operações) e `frontend/src/app/conta/crud.test.tsx` (telas da conta).
+
+## Hospedagem (Render + Supabase, plano grátis)
+
+| Peça | Onde | O que faz |
+| --- | --- | --- |
+| Site, serviço de contas e catálogo | **Render** (Web Service) | um único serviço roda os três, como no `npm run dev` ([`render.yaml`](render.yaml)) |
+| Banco das contas | **Supabase** (PostgreSQL) | guarda contas e sessões; as tabelas ficam no schema `contas`, fora da API pública |
+
+**1. Banco no Supabase**
+
+1. Em [supabase.com](https://supabase.com), crie um projeto na região **East US (North Virginia)**, a mesma do
+   Render. Guarde a senha do banco.
+2. Clique em **Connect** e copie a URL do **Session pooler** (porta 5432). O Render só fala IPv4, e a conexão
+   direta do plano grátis é só IPv6. Troque `[YOUR-PASSWORD]` pela senha do banco.
+3. Não precisa criar tabelas: o serviço de contas cria o schema `contas` sozinho no primeiro início.
+
+**2. Site no Render**
+
+1. Em [render.com](https://render.com), entre com o GitHub e escolha **New → Blueprint**. Selecione este repositório:
+   o `render.yaml` já traz o build, o start, a região, o Node 22 e um `JWT_SECRET` gerado automaticamente.
+2. Quando o Render pedir `DATABASE_URL`, cole a URL do Supabase. Ela fica só no painel do Render, nunca no Git.
+3. Espere o deploy e abra a URL `https://desapego-xxxx.onrender.com`. Cada push no `main` publica de novo.
+
+**Limites do plano grátis**
+
+- O Render "dorme" depois de 15 minutos sem acesso. O primeiro acesso depois disso demora uns 50 segundos, então
+  abra o site um pouco antes de apresentar.
+- O Supabase pausa o projeto depois de 7 dias sem uso. Reative no painel; os dados continuam lá.
+- O catálogo (json-server) volta ao estado inicial a cada reinício do Render. As **contas** ficam salvas no Supabase.
 
 ## O que estou aprendendo
 

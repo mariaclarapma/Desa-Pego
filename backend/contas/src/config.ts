@@ -2,8 +2,8 @@ import { randomBytes } from "node:crypto";
 
 export interface Config {
   porta: number;
-  /** Arquivo do SQLite, ou ":memory:" nos testes. */
-  arquivoBanco: string;
+  /** URL do PostgreSQL (ex.: Supabase). Sem URL, o banco fica em memória (pg-mem). */
+  urlBanco?: string;
   jwtSegredo: Uint8Array;
   acessoMinutos: number;
   refreshDias: number;
@@ -11,7 +11,15 @@ export interface Config {
   /** Caminho visto pelo navegador: o frontend repassa /api/auth/* para este serviço. */
   cookiePath: string;
   cookieSeguro: boolean;
+  /**
+   * Em quais proxies confiar para ler o IP real no X-Forwarded-For (usado no limite de tentativas).
+   * Local: só o Next.js (loopback). No Render: o Next.js e o balanceador da rede interna.
+   */
+  trustProxy: string | number;
 }
+
+/** "2" vira número de saltos; o resto (ex.: "loopback, uniquelocal") vai como lista para o Express. */
+const lerTrustProxy = (v?: string) => (!v ? "loopback" : /^\d+$/.test(v.trim()) ? Number(v) : v);
 
 export function lerConfig(env: NodeJS.ProcessEnv = process.env): Config {
   const producao = env.NODE_ENV === "production";
@@ -22,14 +30,17 @@ export function lerConfig(env: NodeJS.ProcessEnv = process.env): Config {
     segredo = randomBytes(48).toString("base64url");
     console.warn("[contas] JWT_SECRET não definido: usando um segredo temporário de desenvolvimento.");
   }
+  const urlBanco = env.DATABASE_URL || undefined;
+  if (producao && !urlBanco) throw new Error("DATABASE_URL é obrigatório em produção (senão as contas somem a cada reinício).");
   return {
     porta: Number(env.PORTA_CONTAS ?? 3002),
-    arquivoBanco: env.ARQUIVO_BANCO_CONTAS ?? "contas/dados/contas.sqlite",
+    urlBanco,
     jwtSegredo: new TextEncoder().encode(segredo),
     acessoMinutos: 15,
     refreshDias: 30,
     cookieNome: "desapego_refresh",
     cookiePath: env.COOKIE_PATH ?? "/api/auth",
     cookieSeguro: producao,
+    trustProxy: lerTrustProxy(env.TRUST_PROXY),
   };
 }

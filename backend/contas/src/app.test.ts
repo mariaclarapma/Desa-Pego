@@ -1,30 +1,29 @@
 import request from "supertest";
 import { beforeEach, describe, expect, it } from "vitest";
 import { criarApp } from "./app.js";
-import { abrirBanco, type Banco } from "./banco.js";
+import { usarBancoDeTeste } from "./banco-teste.js";
 import type { Config } from "./config.js";
 
 const config: Config = {
   porta: 0,
-  arquivoBanco: ":memory:",
   jwtSegredo: new TextEncoder().encode("segredo-de-teste-com-mais-de-32-caracteres"),
   acessoMinutos: 15,
   refreshDias: 30,
   cookieNome: "desapego_refresh",
   cookiePath: "/auth", // nos testes o cliente fala direto com o serviço (sem o proxy /api)
   cookieSeguro: false,
+  trustProxy: "loopback",
 };
 
 const ANA = { nome: "Ana Souza", email: "Ana@Exemplo.com", senha: "garimpo123" };
 
-let banco: Banco;
+const lerBanco = usarBancoDeTeste();
 let relogio: number;
 let app: ReturnType<typeof criarApp>;
 
 beforeEach(() => {
-  banco = abrirBanco(":memory:");
   relogio = Date.now();
-  app = criarApp(banco, config, () => relogio);
+  app = criarApp(lerBanco(), config, () => relogio);
 });
 
 const cookieRefresh = (res: request.Response) =>
@@ -43,7 +42,7 @@ describe("POST /auth/cadastro", () => {
     expect(cookie).toMatch(/HttpOnly/);
     expect(cookie).toMatch(/SameSite=Strict/);
 
-    const salvo = banco.usuarioPorEmail("ana@exemplo.com")!;
+    const salvo = (await lerBanco().usuarioPorEmail("ana@exemplo.com"))!;
     expect(salvo.senha_hash).toMatch(/^\$argon2id\$/);
     expect(salvo.senha_hash).not.toContain("garimpo123");
   });
@@ -61,7 +60,7 @@ describe("POST /auth/cadastro", () => {
       email: expect.stringContaining("formato"),
       senha: expect.stringContaining("8 caracteres"),
     });
-    expect(banco.usuarioPorEmail("ana@")).toBeUndefined();
+    expect(await lerBanco().usuarioPorEmail("ana@")).toBeUndefined();
   });
 
   it("recusa JSON malformado com 400", async () => {
