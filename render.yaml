@@ -28,3 +28,10 @@ services:
       # o Next.js (loopback) e o balanceador do Render (rede interna) ficam na frente do serviço de contas
       - key: TRUST_PROXY
         value: loopback, uniquelocal
+      # chave da API de integração (X-API-Key): o Render gera uma aleatória; o site usa a mesma
+      # no botão "simular pagamento" (no servidor). Para dar uma chave a um parceiro, copie do painel.
+      - key: API_KEYS
+        generateValue: true
+      # origem do site liberada no CORS (troque se usar outro domínio)
+      - key: CORS_ORIGENS
+        value: https://desapego.onrender.com
