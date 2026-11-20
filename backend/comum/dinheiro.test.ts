@@ -20,14 +20,16 @@ describe("dividirValor (Req. 015: divisão sem diferença de centavos)", () => {
   });
 
   it("a soma das partes é igual ao total para todos os valores de R$ 0,00 a R$ 100,00 e várias comissões", () => {
+    const erros: string[] = [];
     for (const pb of [0, 1, 999, 1000, 1234, 3333, 9999, 10_000]) {
       for (let total = 0; total <= 10_000; total++) {
         const d = dividirValor(total, pb);
-        expect(Number.isInteger(d.comissaoCentavos) && Number.isInteger(d.vendedoraCentavos)).toBe(true);
-        expect(d.comissaoCentavos + d.vendedoraCentavos).toBe(total);
-        expect(d.vendedoraCentavos).toBeGreaterThanOrEqual(0);
+        const ok =
+          Number.isInteger(d.comissaoCentavos) && Number.isInteger(d.vendedoraCentavos) && d.vendedoraCentavos >= 0 && d.comissaoCentavos + d.vendedoraCentavos === total;
+        if (!ok) erros.push(`${total} centavos a ${pb} pontos-base`);
       }
     }
+    expect(erros).toEqual([]);
   });
 
   it("não aceita float, valor negativo nem comissão fora de 0% a 100%", () => {
