@@ -19,6 +19,8 @@ export interface Config {
   trustProxy: string | number;
   /** Origens do frontend liberadas no CORS (CORS_ORIGENS). Nunca "*". */
   origens: string[];
+  /** Cadastros por hora por IP (padrão 10). Os testes E2E, que cadastram muitas contas do mesmo IP, aumentam. */
+  cadastrosPorHora?: number;
 }
 
 export function lerConfig(env: NodeJS.ProcessEnv = process.env): Config {
@@ -43,5 +45,6 @@ export function lerConfig(env: NodeJS.ProcessEnv = process.env): Config {
     cookieSeguro: producao,
     trustProxy: lerTrustProxy(env.TRUST_PROXY),
     origens: lerOrigens(env),
+    cadastrosPorHora: Number(env.LIMITE_CADASTROS_POR_HORA) || 10,
   };
 }

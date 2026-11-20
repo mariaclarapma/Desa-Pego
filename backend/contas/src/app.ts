@@ -27,7 +27,7 @@ const ERRO_BLOQUEADA = "esta conta está bloqueada. fale com a administração d
 export function criarApp(banco: Banco, config: Config, agora: () => number = Date.now) {
   // 5 erros em 15 min bloqueiam por 15 min (por e-mail e por IP); cadastro: 10 por hora por IP
   const falhasLogin = new LimiteTentativas(5, 15 * MINUTO, 15 * MINUTO, agora);
-  const cadastros = new LimiteTentativas(10, 60 * MINUTO, 60 * MINUTO, agora);
+  const cadastros = new LimiteTentativas(config.cadastrosPorHora ?? 10, 60 * MINUTO, 60 * MINUTO, agora);
 
   const app = express();
   app.disable("x-powered-by");
