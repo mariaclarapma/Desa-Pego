@@ -34,7 +34,7 @@ describe("POST /auth/cadastro", () => {
   it("cria a conta, guarda só o hash Argon2id e abre a sessão com cookie httpOnly", async () => {
     const res = await request(app).post("/auth/cadastro").send(ANA).expect(201);
 
-    expect(res.body.usuario).toEqual({ id: expect.any(String), nome: "Ana Souza", email: "ana@exemplo.com" });
+    expect(res.body.usuario).toEqual({ id: expect.any(String), nome: "Ana Souza", email: "ana@exemplo.com", perfil: "USUARIO" });
     expect(res.body.accessToken).toMatch(/^ey/);
     expect(JSON.stringify(res.body)).not.toContain("garimpo123");
     expect(JSON.stringify(res.body)).not.toContain("argon2");

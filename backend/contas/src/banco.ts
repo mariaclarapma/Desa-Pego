@@ -14,7 +14,10 @@ export interface UsuarioRegistro {
   nome: string;
   email: string;
   senha_hash: string;
-  perfil: "USUARIO" | "ADMIN";
+  /** ADMIN_MASTER: a administradora master (só uma, criada pela seed; não pode ser excluída nem rebaixada). */
+  perfil: "USUARIO" | "ADMIN" | "ADMIN_MASTER";
+  /** Conta bloqueada pela administração: não entra nem renova a sessão. */
+  bloqueada: boolean;
   criado_em: string;
 }
 
@@ -78,7 +81,8 @@ export async function abrirBanco(url?: string, schema = "contas") {
       nome TEXT NOT NULL,
       email TEXT NOT NULL UNIQUE,
       senha_hash TEXT NOT NULL,
-      perfil TEXT NOT NULL DEFAULT 'USUARIO' CHECK (perfil IN ('USUARIO', 'ADMIN')),
+      perfil TEXT NOT NULL DEFAULT 'USUARIO' CHECK (perfil IN ('USUARIO', 'ADMIN', 'ADMIN_MASTER')),
+      bloqueada BOOLEAN NOT NULL DEFAULT false,
       criado_em TIMESTAMPTZ NOT NULL DEFAULT now()
     )`);
   await db.query(`
@@ -92,6 +96,14 @@ export async function abrirBanco(url?: string, schema = "contas") {
     )`);
   await db.query(`CREATE INDEX IF NOT EXISTS sessoes_usuario ON ${s}.sessoes (usuario_id)`);
   if (!memoria) {
+    // migração das tabelas criadas antes do Módulo 05 (perfil ADMIN_MASTER e bloqueio de conta)
+    await db.query(`ALTER TABLE ${s}.usuarios ADD COLUMN IF NOT EXISTS bloqueada BOOLEAN NOT NULL DEFAULT false`);
+    await db.query(`ALTER TABLE ${s}.usuarios DROP CONSTRAINT IF EXISTS usuarios_perfil_check`);
+    await db.query(
+      `ALTER TABLE ${s}.usuarios ADD CONSTRAINT usuarios_perfil_check CHECK (perfil IN ('USUARIO', 'ADMIN', 'ADMIN_MASTER'))`,
+    );
+    // só pode existir uma administradora master (o banco garante)
+    await db.query(`CREATE UNIQUE INDEX IF NOT EXISTS um_admin_master ON ${s}.usuarios (perfil) WHERE perfil = 'ADMIN_MASTER'`);
     // defesa extra no Supabase: com RLS ligado e sem políticas, os papéis da API (anon e
     // authenticated) não leem nada. O dono das tabelas (o serviço) não é afetado.
     await db.query(`ALTER TABLE ${s}.usuarios ENABLE ROW LEVEL SECURITY`);
@@ -107,13 +119,14 @@ export async function abrirBanco(url?: string, schema = "contas") {
 
   return {
     /** Lança erro 23505 (veja `emailDuplicado`) se o e-mail já existir. */
-    async criarUsuario(u: Omit<UsuarioRegistro, "perfil" | "criado_em">) {
-      await db.query(`INSERT INTO ${s}.usuarios (id, nome, email, senha_hash, criado_em) VALUES ($1, $2, $3, $4, $5)`, [
+    async criarUsuario(u: Omit<UsuarioRegistro, "perfil" | "criado_em" | "bloqueada"> & { perfil?: UsuarioRegistro["perfil"] }) {
+      await db.query(`INSERT INTO ${s}.usuarios (id, nome, email, senha_hash, criado_em, perfil) VALUES ($1, $2, $3, $4, $5, $6)`, [
         u.id,
         u.nome,
         u.email,
         u.senha_hash,
         agora(),
+        u.perfil ?? "USUARIO",
       ]);
     },
     usuarioPorEmail: async (email: string) => usuario(await um(`SELECT * FROM ${s}.usuarios WHERE email = $1`, [email])),
@@ -153,6 +166,23 @@ export async function abrirBanco(url?: string, schema = "contas") {
     /** Só para os testes contra um Postgres real: apaga o schema do arquivo de teste. */
     async apagarSchema() {
       if (!memoria) await db.query(`DROP SCHEMA IF EXISTS ${s} CASCADE`);
+    },
+    /** Painel do admin: lista as contas (sem senha nem hash), com busca por nome ou e-mail. */
+    async listarUsuarios(busca = "", limite = 50) {
+      const termo = `%${busca.trim().toLowerCase()}%`;
+      const { rows } = await db.query(
+        `SELECT id, nome, email, perfil, bloqueada, criado_em FROM ${s}.usuarios
+         WHERE lower(nome) LIKE $1 OR email LIKE $1 ORDER BY criado_em DESC LIMIT $2`,
+        [termo, limite],
+      );
+      return rows.map((r) => ({ ...r, criado_em: iso(r.criado_em) })) as Omit<UsuarioRegistro, "senha_hash">[];
+    },
+    async definirBloqueio(id: string, bloqueada: boolean) {
+      await db.query(`UPDATE ${s}.usuarios SET bloqueada = $1 WHERE id = $2`, [bloqueada, id]);
+    },
+    adminMaster: async () => usuario(await um(`SELECT * FROM ${s}.usuarios WHERE perfil = 'ADMIN_MASTER'`, [])),
+    async tornarAdminMaster(id: string) {
+      await db.query(`UPDATE ${s}.usuarios SET perfil = 'ADMIN_MASTER', bloqueada = false WHERE id = $1`, [id]);
     },
     fechar: () => db.end(),
   };

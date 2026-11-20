@@ -55,7 +55,7 @@ describe("READ: GET /auth/me", () => {
   it("devolve só os dados públicos da conta logada", async () => {
     const { token, id } = await criarConta();
     const res = await request(app).get("/auth/me").set(bearer(token)).expect(200);
-    expect(res.body).toEqual({ usuario: { id, nome: "Ana Souza", email: "ana@exemplo.com" } });
+    expect(res.body).toEqual({ usuario: { id, nome: "Ana Souza", email: "ana@exemplo.com", perfil: "USUARIO" } });
   });
 
   it("é privada: sem token ou com token vencido responde 401", async () => {
@@ -69,7 +69,7 @@ describe("UPDATE: PATCH /auth/me (nome e e-mail)", () => {
     const { token, id } = await criarConta();
     const res = await request(app).patch("/auth/me").set(bearer(token)).send({ nome: "Ana Paula Souza", email: ANA.email }).expect(200);
 
-    expect(res.body.usuario).toEqual({ id, nome: "Ana Paula Souza", email: "ana@exemplo.com" });
+    expect(res.body.usuario).toEqual({ id, nome: "Ana Paula Souza", email: "ana@exemplo.com", perfil: "USUARIO" });
     expect(res.body.accessToken).toMatch(/^ey/);
     expect((await lerBanco().usuarioPorId(id))!.nome).toBe("Ana Paula Souza");
   });
