@@ -17,6 +17,7 @@ const config: Config = {
   cookiePath: "/auth",
   cookieSeguro: false,
   trustProxy: "loopback",
+  origens: ["http://localhost:3000"],
 };
 
 const ANA = { nome: "Ana Souza", email: "ana@exemplo.com", senha: "garimpo123" };

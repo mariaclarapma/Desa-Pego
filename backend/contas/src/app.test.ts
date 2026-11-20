@@ -13,6 +13,7 @@ const config: Config = {
   cookiePath: "/auth", // nos testes o cliente fala direto com o serviço (sem o proxy /api)
   cookieSeguro: false,
   trustProxy: "loopback",
+  origens: ["http://localhost:3000"],
 };
 
 const ANA = { nome: "Ana Souza", email: "Ana@Exemplo.com", senha: "garimpo123" };

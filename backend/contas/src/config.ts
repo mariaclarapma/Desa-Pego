@@ -1,4 +1,5 @@
 import { randomBytes } from "node:crypto";
+import { lerOrigens, lerTrustProxy } from "../../comum/seguranca.js";
 
 export interface Config {
   porta: number;
@@ -16,10 +17,9 @@ export interface Config {
    * Local: só o Next.js (loopback). No Render: o Next.js e o balanceador da rede interna.
    */
   trustProxy: string | number;
+  /** Origens do frontend liberadas no CORS (CORS_ORIGENS). Nunca "*". */
+  origens: string[];
 }
-
-/** "2" vira número de saltos; o resto (ex.: "loopback, uniquelocal") vai como lista para o Express. */
-const lerTrustProxy = (v?: string) => (!v ? "loopback" : /^\d+$/.test(v.trim()) ? Number(v) : v);
 
 export function lerConfig(env: NodeJS.ProcessEnv = process.env): Config {
   const producao = env.NODE_ENV === "production";
@@ -42,5 +42,6 @@ export function lerConfig(env: NodeJS.ProcessEnv = process.env): Config {
     cookiePath: env.COOKIE_PATH ?? "/api/auth",
     cookieSeguro: producao,
     trustProxy: lerTrustProxy(env.TRUST_PROXY),
+    origens: lerOrigens(env),
   };
 }

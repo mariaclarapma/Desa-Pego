@@ -2,14 +2,16 @@ import { describe, expect, it } from "vitest";
 import { lerConfig } from "./config.js";
 
 const SEGREDO = "um-segredo-de-producao-com-mais-de-32-caracteres";
+const ORIGENS = "https://desapego.onrender.com";
 
 describe("lerConfig", () => {
   it("em produção exige JWT_SECRET forte e DATABASE_URL", () => {
-    expect(() => lerConfig({ NODE_ENV: "production", DATABASE_URL: "postgresql://u:s@h/db" })).toThrow(/JWT_SECRET/);
-    expect(() => lerConfig({ NODE_ENV: "production", JWT_SECRET: SEGREDO })).toThrow(/DATABASE_URL/);
-    const config = lerConfig({ NODE_ENV: "production", JWT_SECRET: SEGREDO, DATABASE_URL: "postgresql://u:s@h/db" });
+    expect(() => lerConfig({ NODE_ENV: "production", CORS_ORIGENS: ORIGENS, DATABASE_URL: "postgresql://u:s@h/db" })).toThrow(/JWT_SECRET/);
+    expect(() => lerConfig({ NODE_ENV: "production", CORS_ORIGENS: ORIGENS, JWT_SECRET: SEGREDO })).toThrow(/DATABASE_URL/);
+    const config = lerConfig({ NODE_ENV: "production", CORS_ORIGENS: ORIGENS, JWT_SECRET: SEGREDO, DATABASE_URL: "postgresql://u:s@h/db" });
     expect(config.urlBanco).toBe("postgresql://u:s@h/db");
     expect(config.cookieSeguro).toBe(true);
+    expect(config.origens).toEqual([ORIGENS]);
   });
 
   it("em desenvolvimento roda sem banco configurado (memória)", () => {
