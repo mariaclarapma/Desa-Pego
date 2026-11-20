@@ -1,4 +1,5 @@
-import pg from "pg";
+import type pg from "pg";
+import { conectar, iso, validarSchema } from "../../comum/postgres.js";
 
 /**
  * Banco do serviço de contas: PostgreSQL.
@@ -31,46 +32,19 @@ export interface SessaoRegistro {
 
 export type Banco = Awaited<ReturnType<typeof abrirBanco>>;
 
-interface Consultavel {
-  query<R extends pg.QueryResultRow>(sql: string, valores?: unknown[]): Promise<pg.QueryResult<R>>;
-  end(): Promise<void>;
-}
-
 /** Erro de e-mail repetido (restrição UNIQUE, código 23505 do Postgres). */
 export const emailDuplicado = (erro: unknown) => {
   const e = erro as { code?: string; message?: string };
   return e?.code === "23505" || /duplicate key|unique/i.test(e?.message ?? "");
 };
 
-/** Tira o `sslmode` da URL: o SSL é configurado aqui (o Supabase usa um certificado próprio). */
-function semSslmode(url: string) {
-  const u = new URL(url);
-  u.searchParams.delete("sslmode");
-  return u.toString();
-}
-
-async function conectar(url?: string): Promise<{ db: Consultavel; memoria: boolean }> {
-  if (!url) {
-    const { newDb } = await import("pg-mem");
-    const { Pool } = newDb().adapters.createPg();
-    return { db: new Pool() as Consultavel, memoria: true };
-  }
-  const local = /@(localhost|127\.0\.0\.1)(:|\/)/.test(url);
-  const pool = new pg.Pool({
-    connectionString: semSslmode(url),
-    ssl: local ? undefined : { rejectUnauthorized: false },
-    max: 5,
-    idleTimeoutMillis: 30_000,
-  });
-  return { db: pool, memoria: false };
-}
 
 /**
  * Abre o banco e cria as tabelas se ainda não existirem.
  * `schema` muda só nos testes contra um Postgres real (cada arquivo de teste usa o seu).
  */
 export async function abrirBanco(url?: string, schema = "contas") {
-  if (!/^[a-z_][a-z0-9_]*$/.test(schema)) throw new Error(`schema inválido: ${schema}`);
+  validarSchema(schema);
   const { db, memoria } = await conectar(url);
   const s = schema;
 
@@ -110,7 +84,6 @@ export async function abrirBanco(url?: string, schema = "contas") {
     await db.query(`ALTER TABLE ${s}.sessoes ENABLE ROW LEVEL SECURITY`);
   }
 
-  const iso = (v: unknown) => (v instanceof Date ? v.toISOString() : (v as string | null));
   const usuario = (r?: pg.QueryResultRow) => (r ? ({ ...r, criado_em: iso(r.criado_em) } as UsuarioRegistro) : undefined);
   const sessao = (r?: pg.QueryResultRow) =>
     r ? ({ ...r, expira_em: iso(r.expira_em), revogada_em: iso(r.revogada_em) } as SessaoRegistro) : undefined;

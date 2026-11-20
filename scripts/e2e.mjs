@@ -33,10 +33,10 @@ const servidores = [
   "npm run start:catalogo -w backend",
   "npm run start -w frontend",
 ];
-const cypress = `wait-on -t 120000 http://localhost:3000 http://localhost:3001/pecas http://localhost:3002/auth/saude && npm run ${abrir ? "cypress:abrir" : "cypress:rodar"} -w frontend`;
+const cypress = `wait-on -t 120000 http://localhost:3000 http://localhost:3001/pecas http://localhost:3002/auth/saude http://localhost:3003/saude && npm run ${abrir ? "cypress:abrir" : "cypress:rodar"} -w frontend`;
 const filho = spawn(
   "npx",
-  ["concurrently", "-k", "-s", "command-cypress", "-n", "contas,catalogo,site,cypress", ...servidores.map((s) => `"${s}"`), `"${cypress}"`],
+  ["concurrently", "-k", "-s", "command-cypress", "-n", "contas,catalogo,pedidos,site,cypress", ...servidores.map((s) => `"${s}"`), `"${cypress}"`],
   { stdio: "inherit", env, shell: true },
 );
 filho.on("exit", (codigo) => {
