@@ -31,6 +31,7 @@ if (!abrir) rodar("npm run build -w frontend");
 const servidores = [
   "npm run start:contas -w backend",
   "npm run start:catalogo -w backend",
+  "npm run start:pedidos -w backend",
   "npm run start -w frontend",
 ];
 const cypress = `wait-on -t 120000 http://localhost:3000 http://localhost:3001/pecas http://localhost:3002/auth/saude http://localhost:3003/saude && npm run ${abrir ? "cypress:abrir" : "cypress:rodar"} -w frontend`;
