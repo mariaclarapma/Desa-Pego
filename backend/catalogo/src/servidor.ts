@@ -1,4 +1,5 @@
 import { fileURLToPath } from "node:url";
+import { lerSegredoJwt } from "../../comum/autenticacao.js";
 import { carregarEnv, lerLista, lerOrigens, lerTrustProxy } from "../../comum/seguranca.js";
 import { criarAppCatalogo } from "./app.js";
 import { abrirLoja } from "./loja.js";
@@ -15,6 +16,7 @@ const app = criarAppCatalogo(loja, {
   trustProxy: lerTrustProxy(process.env.TRUST_PROXY),
   reservaMinutos: 15,
   freteCentavos: 1990,
+  jwtSegredo: lerSegredoJwt(process.env),
 });
 
 app.listen(porta, "127.0.0.1", () => {
