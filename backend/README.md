@@ -5,10 +5,10 @@ Dois serviços de desenvolvimento, que sobem juntos com `npm run dev` (na raiz d
 | Serviço | Porta | O que faz |
 | --- | --- | --- |
 | **catálogo** (json-server) | 3001 | API REST simulada de peças e pedidos, a partir de `db.seed.json` |
-| **contas** (Express + SQLite) | 3002 | cadastro, login e sessão de verdade (Módulo 01, Req. 001) |
+| **contas** (Express + PostgreSQL) | 3002 | cadastro, login e sessão de verdade (Módulo 01, Req. 001) |
 
 O frontend acessa os dois pela mesma origem: `/api/auth/*` vai para contas e `/api/*` para o catálogo
-(ver `frontend/next.config.ts`). No sistema final, os dois viram módulos do backend NestJS com PostgreSQL
+(ver `frontend/next.config.ts`). No sistema final, os dois viram módulos do backend NestJS
 ([arquitetura](../docs/ARQUITETURA.md)).
 
 ```bash
@@ -16,10 +16,22 @@ npm run dev            # sobe catálogo e contas
 npm test               # testes do serviço de contas (Vitest + Supertest)
 npm run typecheck      # checagem de tipos do serviço de contas
 npm run reset-db       # volta o catálogo ao estado inicial (com o servidor parado)
-npm run reset-contas   # apaga todas as contas e sessões (com o servidor parado)
 ```
 
-Requer **Node.js 22.13 ou mais novo** (o banco de contas usa o SQLite nativo do Node).
+Requer **Node.js 22.13 ou mais novo**.
+
+### Banco das contas (PostgreSQL)
+
+- **Com `DATABASE_URL`** em `backend/.env` (veja [`.env.example`](.env.example)): usa esse Postgres, por exemplo o
+  Supabase, e as contas ficam salvas. As tabelas são criadas sozinhas na primeira vez.
+- **Sem `DATABASE_URL`**: usa o [pg-mem](https://github.com/oguimbal/pg-mem), um Postgres em memória. Não precisa
+  instalar nada, mas as contas somem quando o serviço reinicia. Os testes usam o mesmo esquema.
+- **Testes contra um Postgres real**: defina `TEST_DATABASE_URL` (a CI faz isso). Cada arquivo de teste usa um
+  schema próprio, apagado no fim.
+
+As tabelas `usuarios` e `sessoes` ficam no schema **`contas`**, e não no `public`: no Supabase, o `public` é
+publicado pela API REST automática, e hashes de senha nunca podem sair por ali. O RLS fica ligado nas duas tabelas
+como defesa extra.
 
 ## Serviço de contas (`contas/`)
 
@@ -64,11 +76,11 @@ Testes: `contas/src/app.test.ts` (cadastro, login e sessão) e `contas/src/crud.
 - **Validação** com Zod no backend (o frontend nunca é a barreira); e-mail único sem diferenciar maiúsculas
   (restrição `UNIQUE` no banco); cabeçalhos de segurança com Helmet; corpo limitado a 10 KB.
 - **Segredos**: `JWT_SECRET` vem do ambiente (veja `.env.example`); em produção, sem ele o serviço não sobe.
-- O banco (`contas/dados/contas.sqlite`) fica **fora do Git**.
+- A URL do banco e o `JWT_SECRET` ficam só no `.env` ou no painel da hospedagem, **nunca no Git**.
 
 ### Limitações desta versão de desenvolvimento
 
-- SQLite no lugar do PostgreSQL, e limite de tentativas em memória no lugar do Redis (vale para uma instância).
+- Limite de tentativas em memória no lugar do Redis (vale para uma instância só).
 - Ainda não tem CPF, recuperação de senha, login com Google nem 2FA (previstos na arquitetura).
 - O token de acesso é um JWT sem estado: depois de trocar a senha, um token de acesso já emitido para outro
   aparelho continua válido até vencer (no máximo 15 minutos), mas a sessão desse aparelho não renova.

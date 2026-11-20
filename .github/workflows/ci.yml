@@ -39,6 +39,8 @@ jobs:
       DATABASE_URL: postgresql://desapego:desapego@localhost:5432/desapego_test
       REDIS_URL: redis://localhost:6379
       PIX_PROVIDER: simulado
+      # os testes do serviço de contas rodam contra este Postgres (cada arquivo num schema próprio)
+      TEST_DATABASE_URL: postgresql://desapego:desapego@localhost:5432/desapego_test
 
     steps:
       - uses: actions/checkout@v4

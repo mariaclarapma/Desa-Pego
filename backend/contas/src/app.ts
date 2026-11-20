@@ -2,7 +2,7 @@ import { randomUUID } from "node:crypto";
 import cookieParser from "cookie-parser";
 import express, { type NextFunction, type Request, type Response } from "express";
 import helmet from "helmet";
-import type { Banco, UsuarioRegistro } from "./banco.js";
+import { emailDuplicado, type Banco, type UsuarioRegistro } from "./banco.js";
 import type { Config } from "./config.js";
 import { LimiteTentativas } from "./limite.js";
 import { conferirSenha, gerarHashSenha } from "./senhas.js";
@@ -27,8 +27,9 @@ export function criarApp(banco: Banco, config: Config, agora: () => number = Dat
 
   const app = express();
   app.disable("x-powered-by");
-  // o frontend (Next.js, na mesma máquina) repassa as chamadas: o IP real vem do X-Forwarded-For
-  app.set("trust proxy", "loopback");
+  // o frontend (Next.js, na mesma máquina) repassa as chamadas: o IP real vem do X-Forwarded-For.
+  // Na hospedagem (Render) há mais um proxy na frente; veja TRUST_PROXY em config.ts
+  app.set("trust proxy", config.trustProxy);
   app.use(helmet());
   app.use(express.json({ limit: "10kb" }));
   app.use(cookieParser());
@@ -36,7 +37,7 @@ export function criarApp(banco: Banco, config: Config, agora: () => number = Dat
   async function abrirSessao(res: Response, usuario: UsuarioRegistro) {
     const refresh = gerarTokenRefresh();
     const expira = new Date(agora() + config.refreshDias * 24 * 60 * MINUTO);
-    banco.criarSessao({ id: randomUUID(), usuario_id: usuario.id, token_hash: hashToken(refresh), expira_em: expira.toISOString() });
+    await banco.criarSessao({ id: randomUUID(), usuario_id: usuario.id, token_hash: hashToken(refresh), expira_em: expira.toISOString() });
     res.cookie(config.cookieNome, refresh, {
       httpOnly: true,
       secure: config.cookieSeguro,
@@ -72,7 +73,7 @@ export function criarApp(banco: Banco, config: Config, agora: () => number = Dat
     cadastros.registrarFalha(`ip:${ip}`); // conta cada cadastro feito pelo IP
 
     const { nome, email, senha } = dados.data;
-    if (banco.usuarioPorEmail(email)) return res.status(409).json({ erro: "já existe uma conta com esse e-mail." });
+    if (await banco.usuarioPorEmail(email)) return res.status(409).json({ erro: "já existe uma conta com esse e-mail." });
 
     const usuario: UsuarioRegistro = {
       id: randomUUID(),
@@ -83,10 +84,10 @@ export function criarApp(banco: Banco, config: Config, agora: () => number = Dat
       criado_em: new Date(agora()).toISOString(),
     };
     try {
-      banco.criarUsuario(usuario);
+      await banco.criarUsuario(usuario);
     } catch (erro) {
       // corrida entre dois cadastros com o mesmo e-mail: a restrição UNIQUE do banco decide
-      if (String(erro).includes("UNIQUE")) return res.status(409).json({ erro: "já existe uma conta com esse e-mail." });
+      if (emailDuplicado(erro)) return res.status(409).json({ erro: "já existe uma conta com esse e-mail." });
       throw erro;
     }
     res.status(201).json(await abrirSessao(res, usuario));
@@ -101,7 +102,7 @@ export function criarApp(banco: Banco, config: Config, agora: () => number = Dat
     const ate = Math.max(...chaves.map((c) => falhasLogin.bloqueadoAte(c) ?? 0));
     if (ate > agora()) return bloqueado(res, ate);
 
-    const usuario = banco.usuarioPorEmail(email);
+    const usuario = await banco.usuarioPorEmail(email);
     if (!(await conferirSenha(senha, usuario?.senha_hash))) {
       chaves.forEach((c) => falhasLogin.registrarFalha(c));
       return res.status(401).json({ erro: ERRO_CREDENCIAIS });
@@ -112,32 +113,32 @@ export function criarApp(banco: Banco, config: Config, agora: () => number = Dat
 
   rotas.post("/refresh", async (req, res) => {
     const token: string | undefined = req.cookies?.[config.cookieNome];
-    const sessao = token ? banco.sessaoPorHash(hashToken(token)) : undefined;
+    const sessao = token ? await banco.sessaoPorHash(hashToken(token)) : undefined;
     if (!sessao) {
       limparCookie(res);
       return res.status(401).json({ erro: "sessão expirada. entre de novo." });
     }
     if (sessao.revogada_em) {
       // um refresh token já usado voltou: pode ter sido roubado. Derruba todas as sessões da conta.
-      banco.revogarSessoesDoUsuario(sessao.usuario_id);
+      await banco.revogarSessoesDoUsuario(sessao.usuario_id);
       limparCookie(res);
       return res.status(401).json({ erro: "sessão expirada. entre de novo." });
     }
-    const usuario = banco.usuarioPorId(sessao.usuario_id);
+    const usuario = await banco.usuarioPorId(sessao.usuario_id);
     if (!usuario || new Date(sessao.expira_em).getTime() <= agora()) {
-      banco.revogarSessao(sessao.id);
+      await banco.revogarSessao(sessao.id);
       limparCookie(res);
       return res.status(401).json({ erro: "sessão expirada. entre de novo." });
     }
     // rotação: cada refresh token vale uma vez só
-    banco.revogarSessao(sessao.id);
+    await banco.revogarSessao(sessao.id);
     res.json(await abrirSessao(res, usuario));
   });
 
-  rotas.post("/logout", (req, res) => {
+  rotas.post("/logout", async (req, res) => {
     const token: string | undefined = req.cookies?.[config.cookieNome];
-    const sessao = token ? banco.sessaoPorHash(hashToken(token)) : undefined;
-    if (sessao) banco.revogarSessao(sessao.id);
+    const sessao = token ? await banco.sessaoPorHash(hashToken(token)) : undefined;
+    if (sessao) await banco.revogarSessao(sessao.id);
     limparCookie(res);
     res.status(204).end();
   });
@@ -146,7 +147,7 @@ export function criarApp(banco: Banco, config: Config, agora: () => number = Dat
   async function autenticado(req: Request, res: Response, next: NextFunction) {
     const [tipo, token] = (req.get("authorization") ?? "").split(" ");
     const dados = tipo === "Bearer" && token ? await lerTokenAcesso(token, config.jwtSegredo) : null;
-    const usuario = dados ? banco.usuarioPorId(dados.sub) : undefined;
+    const usuario = dados ? await banco.usuarioPorId(dados.sub) : undefined;
     if (!usuario) return res.status(401).json({ erro: "não autenticado." });
     res.locals.usuario = usuario;
     next();
@@ -189,13 +190,13 @@ export function criarApp(banco: Banco, config: Config, agora: () => number = Dat
     const { nome, email, senhaAtual } = dados.data;
     if (email !== usuario.email) {
       if (!(await reautenticar(res, usuario, senhaAtual, "senhaAtual"))) return;
-      const dono = banco.usuarioPorEmail(email);
+      const dono = await banco.usuarioPorEmail(email);
       if (dono && dono.id !== usuario.id) return res.status(409).json({ erro: "já existe uma conta com esse e-mail." });
     }
     try {
-      banco.atualizarPerfil(usuario.id, nome, email);
+      await banco.atualizarPerfil(usuario.id, nome, email);
     } catch (erro) {
-      if (String(erro).includes("UNIQUE")) return res.status(409).json({ erro: "já existe uma conta com esse e-mail." });
+      if (emailDuplicado(erro)) return res.status(409).json({ erro: "já existe uma conta com esse e-mail." });
       throw erro;
     }
     const atualizado = { ...usuario, nome, email };
@@ -211,8 +212,8 @@ export function criarApp(banco: Banco, config: Config, agora: () => number = Dat
     if (!dados.success) return erroValidacao(res, dados.error);
     if (!(await reautenticar(res, usuario, dados.data.senhaAtual, "senhaAtual"))) return;
 
-    banco.atualizarSenha(usuario.id, await gerarHashSenha(dados.data.novaSenha));
-    banco.revogarSessoesDoUsuario(usuario.id);
+    await banco.atualizarSenha(usuario.id, await gerarHashSenha(dados.data.novaSenha));
+    await banco.revogarSessoesDoUsuario(usuario.id);
     res.json(await abrirSessao(res, usuario));
   });
 
@@ -223,8 +224,8 @@ export function criarApp(banco: Banco, config: Config, agora: () => number = Dat
     if (!dados.success) return erroValidacao(res, dados.error);
     if (!(await reautenticar(res, usuario, dados.data.senha, "senha"))) return;
 
-    banco.revogarSessoesDoUsuario(usuario.id);
-    banco.excluirUsuario(usuario.id);
+    await banco.revogarSessoesDoUsuario(usuario.id);
+    await banco.excluirUsuario(usuario.id);
     limparCookie(res);
     res.status(204).end();
   });
