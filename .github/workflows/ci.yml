@@ -95,8 +95,9 @@ jobs:
           done
           curl -sf http://localhost:4000/api/auth/saude
           curl -sf -o /dev/null http://localhost:4000/api/pecas
+          curl -sf http://localhost:4000/api/gestao/saude
           curl -sf -o /dev/null http://localhost:4000/
-          echo "site, catálogo e contas respondendo"
+          echo "site, catálogo, contas e pedidos respondendo"
 
       - name: Log do npm start (se o teste de fumaça falhar)
         if: failure()
