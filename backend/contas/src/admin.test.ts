@@ -1,3 +1,4 @@
+import { randomBytes } from "node:crypto";
 import request from "supertest";
 import { beforeEach, describe, expect, it } from "vitest";
 import { criarApp } from "./app.js";
@@ -18,7 +19,9 @@ const config: Config = {
   origens: ["http://localhost:3000"],
 };
 
-const MASTER = { ADMIN_MASTER_EMAIL: "ludy@desapego.test", ADMIN_MASTER_PASSWORD: "senhaDaLudy123" };
+// senhas geradas a cada execução: nenhuma credencial (nem de teste) fica escrita no código
+const senhaDeTeste = () => `Teste${randomBytes(6).toString("hex")}9`;
+const MASTER = { ADMIN_MASTER_EMAIL: "ludy@desapego.test", ADMIN_MASTER_PASSWORD: senhaDeTeste() };
 const ANA = { nome: "Ana Souza", email: "ana@exemplo.com", senha: "garimpo123" };
 
 const lerBanco = usarBancoDeTeste();
@@ -58,19 +61,19 @@ describe("seed da administradora master", () => {
 
   it("promove uma conta que já existe com o e-mail configurado", async () => {
     await criarAna();
-    expect(await garantirAdminMaster(lerBanco(), { ADMIN_MASTER_EMAIL: ANA.email, ADMIN_MASTER_PASSWORD: "outraSenha123" })).toBe("promovida");
+    expect(await garantirAdminMaster(lerBanco(), { ADMIN_MASTER_EMAIL: ANA.email, ADMIN_MASTER_PASSWORD: senhaDeTeste() })).toBe("promovida");
     expect((await lerBanco().usuarioPorEmail(ANA.email))!.perfil).toBe("ADMIN_MASTER");
   });
 
   it("só existe uma: recusa uma segunda master com outro e-mail", async () => {
     await garantirAdminMaster(lerBanco(), MASTER);
-    await expect(garantirAdminMaster(lerBanco(), { ADMIN_MASTER_EMAIL: "outra@desapego.test", ADMIN_MASTER_PASSWORD: "senhaForte123" })).rejects.toThrow(
+    await expect(garantirAdminMaster(lerBanco(), { ADMIN_MASTER_EMAIL: "outra@desapego.test", ADMIN_MASTER_PASSWORD: senhaDeTeste() })).rejects.toThrow(
       /só pode existir uma/,
     );
   });
 
   it("recusa e-mail inválido ou senha fraca no ambiente", async () => {
-    await expect(garantirAdminMaster(lerBanco(), { ADMIN_MASTER_EMAIL: "ludy@", ADMIN_MASTER_PASSWORD: "senhaDaLudy123" })).rejects.toThrow();
+    await expect(garantirAdminMaster(lerBanco(), { ADMIN_MASTER_EMAIL: "ludy@", ADMIN_MASTER_PASSWORD: senhaDeTeste() })).rejects.toThrow();
     await expect(garantirAdminMaster(lerBanco(), { ADMIN_MASTER_EMAIL: MASTER.ADMIN_MASTER_EMAIL, ADMIN_MASTER_PASSWORD: "fraca" })).rejects.toThrow();
   });
 
