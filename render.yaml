@@ -6,8 +6,8 @@ services:
     name: desapego
     runtime: node
     plan: free
-    # mesma região do banco no Supabase (us-east-1, N. Virginia): menos atraso em cada consulta
-    region: virginia
+    # mesma região do banco no Supabase (us-east-2, Ohio): menos atraso em cada consulta
+    region: ohio
     branch: main
     # --include=dev: o build do Next.js e o tsx (que roda o serviço de contas) são devDependencies
     buildCommand: npm ci --include=dev && npm run build
