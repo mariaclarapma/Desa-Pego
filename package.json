@@ -1,0 +1,27 @@
+{
+  "name": "desa-pego",
+  "version": "0.1.0",
+  "private": true,
+  "description": "desaPego: documento de arquitetura e frontend do brechó online (Desenvolvimento Web, CEUB 2026)",
+  "workspaces": [
+    "frontend",
+    "backend"
+  ],
+  "scripts": {
+    "dev": "concurrently -n backend,frontend -c magenta,cyan \"npm run dev -w backend\" \"npm run dev -w frontend\"",
+    "dev:frontend": "npm run dev -w frontend",
+    "dev:backend": "npm run dev -w backend",
+    "reset-db": "npm run reset-db -w backend",
+    "test": "npm test --workspaces --if-present",
+    "lint": "npm run lint -w frontend",
+    "typecheck": "npm run typecheck --workspaces --if-present",
+    "build": "npm run build -w frontend",
+    "reset-contas": "npm run reset-contas -w backend"
+  },
+  "devDependencies": {
+    "concurrently": "^10.0.7"
+  },
+  "engines": {
+    "node": ">=22.13"
+  }
+}
