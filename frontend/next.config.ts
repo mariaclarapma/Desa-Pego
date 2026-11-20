@@ -49,9 +49,29 @@ const cabecalhosSeguranca = [
   ...(producao ? [{ key: "Strict-Transport-Security", value: "max-age=63072000; includeSubDomains" }] : []),
 ];
 
+// `npm run cobertura`: build separado, com o código instrumentado pelo Istanbul para o Cypress
+const cobertura = process.env.COBERTURA === "1";
+
 const nextConfig: NextConfig = {
   // não anuncia "x-powered-by: Next.js"
   poweredByHeader: false,
+  ...(cobertura && {
+    distDir: ".next-cobertura",
+    productionBrowserSourceMaps: true,
+    webpack(config) {
+      // depois do SWC (enforce: "post"), o babel-plugin-istanbul marca cada linha de src/;
+      // o mapa de origem leva a cobertura de volta para os arquivos .ts/.tsx
+      config.module.rules.push({
+        test: /\.(ts|tsx|js|jsx)$/,
+        include: [resolve(process.cwd(), "src")],
+        exclude: [/\.test\.(ts|tsx)$/, /[\\/]src[\\/]test[\\/]/],
+        enforce: "post",
+        use: { loader: "babel-loader", options: { babelrc: false, configFile: false, sourceMaps: true, plugins: [["istanbul", { cwd: process.cwd(), include: ["src/**"], exclude: ["src/**/*.test.*", "src/test/**"] }]] } },
+      });
+      config.devtool = "source-map";
+      return config;
+    },
+  }),
   // o indicador do modo dev fica à direita para não cobrir a barra de acessibilidade
   devIndicators: { position: "bottom-right" },
   async headers() {
