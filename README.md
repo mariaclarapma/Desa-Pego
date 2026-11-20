@@ -255,7 +255,7 @@ operações) e `frontend/src/app/conta/crud.test.tsx` (telas da conta).
 
 **1. Banco no Supabase**
 
-1. Em [supabase.com](https://supabase.com), crie um projeto na região **East US (North Virginia)**, a mesma do
+1. Em [supabase.com](https://supabase.com), crie um projeto na região **East US (Ohio)**, a mesma do
    Render. Guarde a senha do banco.
 2. Clique em **Connect** e copie a URL do **Session pooler** (porta 5432). O Render só fala IPv4, e a conexão
    direta do plano grátis é só IPv6. Troque `[YOUR-PASSWORD]` pela senha do banco.
