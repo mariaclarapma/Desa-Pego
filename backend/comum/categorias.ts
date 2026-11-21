@@ -17,3 +17,10 @@ export type CategoriaSlug = (typeof CATEGORIAS)[number]["slug"];
 const SLUGS = new Set<string>(CATEGORIAS.map((c) => c.slug));
 
 export const categoriaPermitida = (slug: unknown): slug is CategoriaSlug => typeof slug === "string" && SLUGS.has(slug);
+
+/** Condições de uma peça (as mesmas do site, em `types/catalogo.ts`). */
+export const CONDICOES = ["nova_com_etiqueta", "otimo_estado", "bom_estado", "com_marcas_de_uso"] as const;
+
+export type Condicao = (typeof CONDICOES)[number];
+
+export const condicaoValida = (v: unknown): v is Condicao => typeof v === "string" && (CONDICOES as readonly string[]).includes(v);
