@@ -46,7 +46,7 @@ describe("painel da administração", () => {
 
   it("a administradora master entra no painel pela conta e vê todas as seções (acessível)", () => {
     entrarComoAdmin();
-    cy.contains("a", "painel da administração").click();
+    cy.get("main").contains("a", "painel da administração").click();
     cy.location("pathname").should("eq", "/admin");
     for (const secao of ["visão geral", "usuárias", "anúncios", "pedidos", "comissão da plataforma", "taxa do Pix", "frete fixo", "preço sugerido", "repasses"]) {
       cy.contains("h2", secao);

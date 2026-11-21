@@ -4,7 +4,7 @@ import { gerarHashSenha } from "./senhas.js";
 import { esquemaCadastro } from "./validacao.js";
 
 /**
- * Seed da administradora master (Ludy). E-mail e senha vêm SÓ do ambiente
+ * Seed da administradora master (Lucy). E-mail e senha vêm SÓ do ambiente
  * (ADMIN_MASTER_EMAIL e ADMIN_MASTER_PASSWORD); nada fica no código.
  *
  * - Sem conta com esse e-mail: cria, já como ADMIN_MASTER.
@@ -18,7 +18,7 @@ export async function garantirAdminMaster(banco: Banco, env: NodeJS.ProcessEnv):
   if (!email || !senha) return "sem-config";
 
   // mesmas regras do cadastro: e-mail válido e senha forte (a conta da administração não tem CPF)
-  const dados = esquemaCadastro.omit({ cpf: true }).safeParse({ nome: env.ADMIN_MASTER_NOME ?? "Ludy Administração", email, senha });
+  const dados = esquemaCadastro.omit({ cpf: true }).safeParse({ nome: env.ADMIN_MASTER_NOME ?? "Lucy Administração", email, senha });
   if (!dados.success) {
     throw new Error(`ADMIN_MASTER_EMAIL ou ADMIN_MASTER_PASSWORD inválidos: ${dados.error.issues.map((i) => i.message).join(" ")}`);
   }

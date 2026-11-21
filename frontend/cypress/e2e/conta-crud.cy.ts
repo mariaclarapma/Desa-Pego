@@ -42,7 +42,7 @@ describe("CRUD da conta", () => {
       cy.contains("button", "trocar senha").click();
       cy.get("[role=status]").should("contain.text", "senha alterada");
 
-      cy.contains("button", "sair da conta").click();
+      cy.get("main").contains("button", "sair da conta").click();
       cy.location("pathname").should("eq", "/entrar");
       cy.findCampo("e-mail").type(email);
       cy.findCampo("senha").type("brecho2026");

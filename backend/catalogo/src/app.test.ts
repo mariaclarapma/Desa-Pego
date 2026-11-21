@@ -203,29 +203,29 @@ describe("painel do admin: anúncios (Módulo 05)", () => {
   });
 
   it("ocultar tira o anúncio da vitrine, da página e da reserva; reexibir devolve", async () => {
-    const ludy = await como("ADMIN_MASTER");
+    const lucy = await como("ADMIN_MASTER");
     const peca = disponivel();
-    await request(app).post(`/admin/pecas/${peca.id}/ocultar`).set(ludy).send({ motivo: "foto imprópria" }).expect(200);
+    await request(app).post(`/admin/pecas/${peca.id}/ocultar`).set(lucy).send({ motivo: "foto imprópria" }).expect(200);
     expect((await request(app).get("/pecas")).body.map((p: { id: string }) => p.id)).not.toContain(peca.id);
     await request(app).get(`/pecas/${peca.id}`).expect(404);
     await request(app).post(`/pecas/${peca.id}/reservar`).expect(404);
-    const lista = (await request(app).get("/admin/pecas").set(ludy).expect(200)).body.pecas;
+    const lista = (await request(app).get("/admin/pecas").set(lucy).expect(200)).body.pecas;
     expect(lista.find((p: { id: string }) => p.id === peca.id)).toMatchObject({ oculta: true, motivoOculta: "foto imprópria", irregular: false });
 
-    await request(app).post(`/admin/pecas/${peca.id}/reexibir`).set(ludy).expect(200);
+    await request(app).post(`/admin/pecas/${peca.id}/reexibir`).set(lucy).expect(200);
     await request(app).get(`/pecas/${peca.id}`).expect(200);
   });
 
   it("anúncio em categoria não permitida (ex.: eletrônicos) é marcado irregular e não pode voltar à vitrine", async () => {
-    const ludy = await como("ADMIN_MASTER");
+    const lucy = await como("ADMIN_MASTER");
     const peca = disponivel();
     peca.categoria = "eletronicos"; // simula um anúncio irregular vindo do Módulo 02
-    const lista = (await request(app).get("/admin/pecas").set(ludy).expect(200)).body.pecas;
+    const lista = (await request(app).get("/admin/pecas").set(lucy).expect(200)).body.pecas;
     expect(lista.find((p: { id: string }) => p.id === peca.id).irregular).toBe(true);
 
-    const oculta = await request(app).post(`/admin/pecas/${peca.id}/ocultar`).set(ludy).expect(200);
+    const oculta = await request(app).post(`/admin/pecas/${peca.id}/ocultar`).set(lucy).expect(200);
     expect(oculta.body.motivoOculta).toBe("fora das categorias permitidas");
-    const recusa = await request(app).post(`/admin/pecas/${peca.id}/reexibir`).set(ludy).expect(422);
+    const recusa = await request(app).post(`/admin/pecas/${peca.id}/reexibir`).set(lucy).expect(422);
     expect(recusa.body.erro).toMatch(/categoria não permitida/);
     await request(app).get(`/pecas/${peca.id}`).expect(404);
   });

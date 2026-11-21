@@ -23,7 +23,7 @@ const config: Config = {
 
 // senhas geradas a cada execução: nenhuma credencial (nem de teste) fica escrita no código
 const senhaDeTeste = () => `Teste${randomBytes(6).toString("hex")}9`;
-const MASTER = { ADMIN_MASTER_EMAIL: "ludy@desapego.test", ADMIN_MASTER_PASSWORD: senhaDeTeste() };
+const MASTER = { ADMIN_MASTER_EMAIL: "lucy@desapego.test", ADMIN_MASTER_PASSWORD: senhaDeTeste() };
 const ANA = { nome: "Ana Souza", email: "ana@exemplo.com", cpf: "529.982.247-25", senha: "garimpo123" };
 
 const lerBanco = usarBancoDeTeste();
@@ -51,9 +51,9 @@ describe("seed da administradora master", () => {
   it("cria a conta a partir do ambiente, com perfil ADMIN_MASTER, e não duplica", async () => {
     expect(await garantirAdminMaster(lerBanco(), MASTER)).toBe("criada");
     expect(await garantirAdminMaster(lerBanco(), MASTER)).toBe("ok");
-    const ludy = await lerBanco().usuarioPorEmail(MASTER.ADMIN_MASTER_EMAIL);
-    expect(ludy).toMatchObject({ perfil: "ADMIN_MASTER", bloqueada: false });
-    expect(ludy!.senha_hash).toMatch(/^\$argon2id\$/);
+    const lucy = await lerBanco().usuarioPorEmail(MASTER.ADMIN_MASTER_EMAIL);
+    expect(lucy).toMatchObject({ perfil: "ADMIN_MASTER", bloqueada: false });
+    expect(lucy!.senha_hash).toMatch(/^\$argon2id\$/);
   });
 
   it("sem as variáveis, não cria nada", async () => {
@@ -75,7 +75,7 @@ describe("seed da administradora master", () => {
   });
 
   it("recusa e-mail inválido ou senha fraca no ambiente", async () => {
-    await expect(garantirAdminMaster(lerBanco(), { ADMIN_MASTER_EMAIL: "ludy@", ADMIN_MASTER_PASSWORD: senhaDeTeste() })).rejects.toThrow();
+    await expect(garantirAdminMaster(lerBanco(), { ADMIN_MASTER_EMAIL: "lucy@", ADMIN_MASTER_PASSWORD: senhaDeTeste() })).rejects.toThrow();
     await expect(garantirAdminMaster(lerBanco(), { ADMIN_MASTER_EMAIL: MASTER.ADMIN_MASTER_EMAIL, ADMIN_MASTER_PASSWORD: "fraca" })).rejects.toThrow();
   });
 
@@ -128,8 +128,8 @@ describe("painel do admin: usuárias (Req. 015: acesso de quem não é admin)", 
 
   it("não bloqueia a administradora master; id inválido é 400 e conta inexistente é 404", async () => {
     const master = await entrarComoMaster();
-    const ludy = await lerBanco().adminMaster();
-    await request(app).post(`/auth/admin/usuarios/${ludy!.id}/bloquear`).set(bearer(master)).expect(403);
+    const lucy = await lerBanco().adminMaster();
+    await request(app).post(`/auth/admin/usuarios/${lucy!.id}/bloquear`).set(bearer(master)).expect(403);
     await request(app).post("/auth/admin/usuarios/nao-e-uuid/bloquear").set(bearer(master)).expect(400);
     await request(app).post("/auth/admin/usuarios/00000000-0000-4000-8000-000000000000/bloquear").set(bearer(master)).expect(404);
   });

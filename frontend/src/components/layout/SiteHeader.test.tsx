@@ -1,7 +1,15 @@
 import { render, screen, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
+import { useSessao } from "@/lib/sessao";
 import { SiteHeader } from "./SiteHeader";
+
+const lucy = { id: "9", nome: "Lucy Administração", email: "lucy@desapego.test", perfil: "ADMIN_MASTER" as const };
+
+afterEach(() => {
+  vi.unstubAllGlobals();
+  useSessao.setState({ sessao: null });
+});
 
 describe("SiteHeader", () => {
   it("tem o logotipo escrito exatamente como desaPego", () => {
@@ -48,5 +56,34 @@ describe("SiteHeader", () => {
 
     await user.click(within(menu).getByRole("button", { name: "Fechar menu" }));
     expect(menu).not.toHaveAttribute("open");
+  });
+
+  it("sem sessão: menu oferece entrar e não mostra sair nem o painel", () => {
+    render(<SiteHeader />);
+    expect(screen.queryByRole("button", { name: /^sair/ })).not.toBeInTheDocument();
+    const menu = screen.getByRole("navigation", { name: "Conta e ajuda", hidden: true });
+    expect(within(menu).getByRole("link", { name: "entrar ou criar conta", hidden: true })).toHaveAttribute("href", "/entrar");
+    expect(within(menu).queryByRole("link", { name: "painel da administração", hidden: true })).not.toBeInTheDocument();
+  });
+
+  it("com sessão: sair encerra a sessão no servidor e volta para a tela de entrar", async () => {
+    const user = userEvent.setup();
+    const fetchFalso = vi.fn().mockResolvedValue(new Response(null, { status: 204 }));
+    const assign = vi.fn();
+    vi.stubGlobal("fetch", fetchFalso);
+    vi.stubGlobal("location", { ...window.location, assign });
+    useSessao.setState({ sessao: { usuario: lucy, accessToken: "tok", expiraEm: "" } });
+    render(<SiteHeader />);
+
+    const menu = screen.getByRole("navigation", { name: "Conta e ajuda", hidden: true });
+    expect(within(menu).getByText("Lucy Administração")).toBeInTheDocument();
+    expect(within(menu).getByRole("link", { name: "minha conta", hidden: true })).toHaveAttribute("href", "/conta");
+    expect(within(menu).getByRole("link", { name: "painel da administração", hidden: true })).toHaveAttribute("href", "/admin");
+
+    const atalhos = screen.getByRole("navigation", { name: "Atalhos da conta" });
+    await user.click(within(atalhos).getByRole("button", { name: "sair" }));
+    await vi.waitFor(() => expect(assign).toHaveBeenCalledWith("/entrar"));
+    expect(fetchFalso).toHaveBeenCalledWith(expect.stringContaining("/auth/logout"), expect.objectContaining({ method: "POST" }));
+    expect(useSessao.getState().sessao).toBeNull();
   });
 });

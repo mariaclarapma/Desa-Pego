@@ -8,8 +8,8 @@ const replace = vi.fn();
 vi.mock("next/navigation", () => ({ useRouter: () => ({ replace, push: vi.fn() }) }));
 
 const usuaria = { id: "1", nome: "Ana Souza", email: "ana@exemplo.com", perfil: "USUARIO" as const };
-const ludy = { id: "9", nome: "Ludy Administração", email: "ludy@desapego.test", perfil: "ADMIN_MASTER" as const };
-const sessaoDe = (usuario: typeof usuaria | typeof ludy) => ({ usuario, accessToken: "ey.x.y", expiraEm: "" });
+const lucy = { id: "9", nome: "Lucy Administração", email: "lucy@desapego.test", perfil: "ADMIN_MASTER" as const };
+const sessaoDe = (usuario: typeof usuaria | typeof lucy) => ({ usuario, accessToken: "ey.x.y", expiraEm: "" });
 
 const FAIXAS = [
   { categoria: "bolsas", condicao: "otimo_estado", minimoCentavos: 5000, maximoCentavos: 25000 },
@@ -30,7 +30,7 @@ function backendFalso() {
       });
     if (url.startsWith("/api/auth/admin/usuarios") && init?.method === "POST") return json({ usuario: { ...usuaria, bloqueada: true } });
     if (url.startsWith("/api/auth/admin/usuarios"))
-      return json({ usuarios: [{ ...ludy, bloqueada: false, criado_em: "" }, { ...usuaria, bloqueada: false, criado_em: "" }] });
+      return json({ usuarios: [{ ...lucy, bloqueada: false, criado_em: "" }, { ...usuaria, bloqueada: false, criado_em: "" }] });
     if (url.startsWith("/api/admin/pecas")) return json({ pecas: [] });
     if (url.startsWith("/api/gestao/admin/pedidos")) return json({ pedidos: [] });
     if (url.startsWith("/api/gestao/admin/comissao") && init?.method === "PUT") return json(JSON.parse(String(init.body)));
@@ -69,7 +69,7 @@ describe("painel da administração", () => {
 
   it("a administradora master vê as nove seções e a visão geral", async () => {
     vi.stubGlobal("fetch", backendFalso());
-    useSessao.setState({ sessao: sessaoDe(ludy) });
+    useSessao.setState({ sessao: sessaoDe(lucy) });
     render(<AdminPage />);
     const nav = screen.getByRole("navigation", { name: "Seções do painel" });
     expect(within(nav).getAllByRole("link")).toHaveLength(9);
@@ -83,10 +83,10 @@ describe("painel da administração", () => {
     const user = userEvent.setup();
     const fetchFalso = backendFalso();
     vi.stubGlobal("fetch", fetchFalso);
-    useSessao.setState({ sessao: sessaoDe(ludy) });
+    useSessao.setState({ sessao: sessaoDe(lucy) });
     render(<AdminPage />);
     await user.click(await screen.findByRole("button", { name: "bloquear Ana Souza" }));
-    expect(screen.queryByRole("button", { name: /bloquear Ludy/ })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /bloquear Lucy/ })).not.toBeInTheDocument();
     expect(await screen.findByText("Ana Souza foi bloqueada.")).toBeInTheDocument();
     expect(fetchFalso).toHaveBeenCalledWith("/api/auth/admin/usuarios/1/bloquear", expect.objectContaining({ method: "POST" }));
   });
@@ -95,7 +95,7 @@ describe("painel da administração", () => {
     const user = userEvent.setup();
     const fetchFalso = backendFalso();
     vi.stubGlobal("fetch", fetchFalso);
-    useSessao.setState({ sessao: sessaoDe(ludy) });
+    useSessao.setState({ sessao: sessaoDe(lucy) });
     render(<AdminPage />);
     const campo = await screen.findByLabelText("nova comissão (%)");
     await vi.waitFor(() => expect(campo).toHaveValue("10,00"));
@@ -117,7 +117,7 @@ describe("painel da administração", () => {
     const user = userEvent.setup();
     const fetchFalso = backendFalso();
     vi.stubGlobal("fetch", fetchFalso);
-    useSessao.setState({ sessao: sessaoDe(ludy) });
+    useSessao.setState({ sessao: sessaoDe(lucy) });
     render(<AdminPage />);
 
     const taxa = await screen.findByLabelText("nova taxa do Pix (%)");
@@ -149,7 +149,7 @@ describe("painel da administração", () => {
     const user = userEvent.setup();
     const fetchFalso = backendFalso();
     vi.stubGlobal("fetch", fetchFalso);
-    useSessao.setState({ sessao: sessaoDe(ludy) });
+    useSessao.setState({ sessao: sessaoDe(lucy) });
     render(<AdminPage />);
 
     const minimo = await screen.findByLabelText("mínimo de bolsas, ótimo estado");
