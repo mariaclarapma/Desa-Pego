@@ -360,18 +360,25 @@ Os endpoints estão documentados em [`docs/openapi.yaml`](docs/openapi.yaml).
   As vendas mostram o endereço e quanto a vendedora recebe.
 
 **Dinheiro.**
-- Os valores ficam em centavos inteiros, e a comissão em pontos-base (1000 = 10,00%), também inteira.
-- A comissão é arredondada só com inteiros (`backend/comum/dinheiro.ts`), e a vendedora fica com o resto. Então
-  **comissão + vendedora = total**, sem diferença de centavo. O frete vai inteiro para a vendedora, que é quem envia.
-- O percentual de comissão é **congelado no pedido**: mudar a comissão no painel vale só para os pedidos novos.
+- Os valores ficam em centavos inteiros, e a comissão e a taxa do Pix em pontos-base (1000 = 10,00%), também inteiras.
+- A comissão (sobre as peças) e a taxa do Pix (sobre o total pago) são arredondadas só com inteiros
+  (`backend/comum/dinheiro.ts`), e a vendedora fica com o resto. Então **vendedora + comissão + taxa = total**, sem
+  diferença de centavo. O frete vai para a vendedora, que é quem envia.
+- O percentual de comissão e o da taxa são **congelados no pedido**: mudar no painel vale só para os pedidos novos.
+  O frete fixo também: cada pedido guarda o frete do momento da compra.
 
-**Carteira (livro-razão).** Cada fato gera um lançamento que nunca é alterado:
+**Carteira (livro-razão).** Cada fato gera lançamentos que nunca são alterados nem apagados. No Postgres, um trigger
+recusa `UPDATE` e `DELETE` na tabela `lancamentos`. Cada lançamento é de uma conta (`vendedora`, `comissao` ou
+`taxa_pix`), e o saldo da vendedora é a soma só dos lançamentos da conta dela:
 
-| Fato | Efeito no saldo |
+| Fato | Lançamentos |
 | --- | --- |
-| pedido pago | o valor da vendedora entra como **pendente** |
-| pedido recebido | o valor passa de pendente para **disponível** |
-| pedido pago e depois cancelado | estorna o pendente |
+| pedido pago | três: o valor da vendedora como **pendente**, a comissão e a taxa do Pix (somam o total pago) |
+| pedido recebido | o valor da vendedora passa de pendente para **disponível** |
+| pedido pago e depois cancelado | estorno das três contas |
+| repasse pago | debita o disponível |
+
+- A vendedora vê saldo pendente, disponível e o extrato completo (com comissão e taxa separadas) em `/conta/carteira`.
 
 - A vendedora solicita o saque. O pedido é recusado (**422**) se passar do disponível menos o que já está em saque.
 - A administração faz o Pix manualmente e registra o pagamento, que debita o disponível.
@@ -382,18 +389,23 @@ Os endpoints estão documentados em [`docs/openapi.yaml`](docs/openapi.yaml).
 - O Módulo 02 (anúncios) usa a mesma validação ao criar o anúncio.
 
 **Painel (`/admin`).** Tem as seções visão geral, usuárias (busca, bloquear e desbloquear), anúncios (ocultar e
-reexibir), pedidos (filtro por status), comissão e repasses. A tela só esconde as opções: o backend responde 403 a
-quem não é a administradora master.
+reexibir), pedidos (filtro por status), comissão, taxa do Pix, frete fixo, tabela de preço sugerido e repasses. A tela
+só esconde as opções: o backend responde 403 a quem não é a administradora master.
+- Frete: fica no catálogo, que cobra o frete no checkout (`PUT /api/admin/frete`). A sacola e o checkout leem o valor
+  atual em `GET /api/config`.
+- Taxa do Pix e tabela de preço sugerido: ficam no serviço de pedidos. O simulador e a sugestão de preço do anúncio
+  (Módulo 02) podem ler comissão, taxa e tabela em `GET /api/gestao/config`, sem login.
 
 **Testes do Req. 015.**
 
 | Arquivo | O que cobre |
 | --- | --- |
-| `backend/pedidos/src/pedidos.test.ts` | transições válidas e inválidas, 403 para quem não é dona do pedido, divisão com R$ 10,01 e R$ 33,33, liberação do saldo só depois do recebimento, repasse maior que o saldo, comissão nova sem afetar pedidos antigos, 403 no painel |
+| `backend/pedidos/src/pedidos.test.ts` | transições válidas e inválidas, 403 para quem não é dona do pedido, divisão com R$ 10,01 e R$ 33,33, três lançamentos por venda somando o total, estorno das três contas, trigger que recusa alterar lançamento (Postgres), liberação do saldo só depois do recebimento, repasse maior que o saldo, comissão e taxa novas sem afetar pedidos antigos, tabela de preço sugerido, 403 no painel |
 | `backend/comum/dinheiro.test.ts` | divisão exata para todos os valores de R$ 0,00 a R$ 100,00 em 8 comissões, e as categorias permitidas |
-| `backend/catalogo/src/app.test.ts` | admin oculta anúncio; anúncio em categoria não permitida (ex.: eletrônicos) é recusado |
+| `backend/catalogo/src/app.test.ts` | admin oculta anúncio; anúncio em categoria não permitida (ex.: eletrônicos) é recusado; frete fixo alterado pelo admin vale só para pedidos novos |
 | `backend/contas/src/admin.test.ts` | seed da master, master protegida, bloqueio de contas, 403 no painel |
-| `frontend/src/app/admin/page.test.tsx` e `frontend/cypress/e2e/admin.cy.ts` | tela do painel, acesso restrito e auditoria de acessibilidade |
+| `frontend/src/app/admin/page.test.tsx` e `frontend/cypress/e2e/admin.cy.ts` | tela do painel (inclusive taxa, frete e tabela de preço), acesso restrito e auditoria de acessibilidade |
+| `frontend/src/components/carteira/PaginaCarteira.test.tsx` e `frontend/cypress/e2e/carteira.cy.ts` | tela da carteira: saldo, extrato, saque dentro do limite e recusa do backend (422) |
 | `frontend/src/components/pedidos/ListaDePedidos.test.tsx` e `frontend/cypress/e2e/compras-vendas.cy.ts` | telas de compras e vendas (Req. 013): da compra paga ao recebimento, endereço só para a vendedora, 403 para quem não participa |
 
 ```bash

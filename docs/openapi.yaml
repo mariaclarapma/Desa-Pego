@@ -6,9 +6,9 @@ info:
     Endpoints novos do Módulo 05 (Req. 013, 014 e 015). Pelo site, tudo fica sob `/api`:
     - pedidos, carteira e painel → `/api/gestao/*` (serviço de pedidos, porta 3003)
     - usuárias do painel → `/api/auth/admin/*` (serviço de contas, porta 3002)
-    - anúncios do painel → `/api/admin/*` (catálogo, porta 3001)
+    - anúncios e frete do painel → `/api/admin/*` e `/api/config` (catálogo, porta 3001)
 
-    Dinheiro sempre em **centavos inteiros**. Comissão em **pontos-base** (1000 = 10,00%).
+    Dinheiro sempre em **centavos inteiros**. Comissão e taxa do Pix em **pontos-base** (1000 = 10,00%).
     Rotas com login usam o token de acesso do serviço de contas (`Authorization: Bearer …`).
     Rotas do painel: só o perfil `ADMIN_MASTER`; qualquer outro perfil recebe **403**.
 servers:
@@ -78,14 +78,21 @@ components:
         totalCentavos: { type: integer }
         comissaoPontosBase: { type: integer, description: comissão congelada no momento da compra }
         comissaoCentavos: { type: integer }
-        vendedoraCentavos: { type: integer, description: "parte da vendedora nas peças + frete; comissão + vendedora = total" }
+        taxaPixPontosBase: { type: integer, description: taxa do Pix congelada no momento da compra }
+        taxaPixCentavos: { type: integer, description: cobrada sobre o total (peças + frete) }
+        vendedoraCentavos: { type: integer, description: "peças + frete − comissão − taxa do Pix; vendedora + comissão + taxa = total" }
         status: { $ref: "#/components/schemas/StatusPedido" }
         criadoEm: { type: string, format: date-time }
         atualizadoEm: { type: string, format: date-time }
     Lancamento:
       type: object
+      description: |
+        Linha do livro-razão. Nunca é alterada nem apagada (no Postgres, um trigger recusa UPDATE e DELETE).
+        Cada venda paga gera três: `vendedora`, `comissao` e `taxa_pix`, que somam o total cobrado.
+        O saldo da vendedora é a soma só dos lançamentos da conta `vendedora`.
       properties:
         id: { type: string }
+        conta: { type: string, enum: [vendedora, comissao, taxa_pix] }
         tipo: { type: string, enum: [venda, liberacao, estorno, repasse] }
         pedidoId: { type: [string, "null"] }
         repasseId: { type: [string, "null"] }
@@ -129,6 +136,20 @@ components:
         oculta: { type: boolean }
         motivoOculta: { type: [string, "null"] }
         irregular: { type: boolean, description: "fora das categorias permitidas (roupas, calçados, bolsas e acessórios)" }
+    FaixaPreco:
+      type: object
+      required: [categoria, condicao, minimoCentavos, maximoCentavos]
+      properties:
+        categoria: { type: string, enum: [feminino, masculino, calcados, bolsas, acessorios] }
+        condicao: { type: string, enum: [nova_com_etiqueta, otimo_estado, bom_estado, com_marcas_de_uso] }
+        minimoCentavos: { type: integer, minimum: 1 }
+        maximoCentavos: { type: integer, description: não pode ser menor que o mínimo }
+    Configuracao:
+      type: object
+      properties:
+        comissaoPontosBase: { type: integer }
+        taxaPixPontosBase: { type: integer }
+        precosSugeridos: { type: array, items: { $ref: "#/components/schemas/FaixaPreco" } }
     Erro:
       type: object
       required: [erro]
@@ -139,7 +160,7 @@ components:
     Pedido: { description: pedido, content: { application/json: { schema: { $ref: "#/components/schemas/Pedido" } } } }
     Invalido: { description: dados inválidos, content: { application/json: { schema: { $ref: "#/components/schemas/Erro" } } } }
     SemLogin: { description: sem token ou token inválido, content: { application/json: { schema: { $ref: "#/components/schemas/Erro" } } } }
-    Proibido: { description: não é dona do pedido, não pode fazer esta ação ou não é administradora, content: { application/json: { schema: { $ref: "#/components/schemas/Erro" } } } }
+    Proibido: { description: "não é dona do pedido, não pode fazer esta ação ou não é administradora", content: { application/json: { schema: { $ref: "#/components/schemas/Erro" } } } }
     NaoEncontrado: { description: não encontrado, content: { application/json: { schema: { $ref: "#/components/schemas/Erro" } } } }
     TransicaoInvalida: { description: transição de status inválida, content: { application/json: { schema: { $ref: "#/components/schemas/Erro" } } } }
     SaldoInsuficiente: { description: valor maior que o saldo disponível, content: { application/json: { schema: { $ref: "#/components/schemas/Erro" } } } }
@@ -288,9 +309,10 @@ paths:
                 type: object
                 properties:
                   pedidosPorStatus: { type: object, additionalProperties: { type: integer } }
-                  vendas: { type: object, properties: { quantidade: { type: integer }, totalCentavos: { type: integer }, comissaoCentavos: { type: integer } } }
+                  vendas: { type: object, properties: { quantidade: { type: integer }, totalCentavos: { type: integer }, comissaoCentavos: { type: integer }, taxaPixCentavos: { type: integer } } }
                   repasses: { type: object, additionalProperties: { type: object, properties: { quantidade: { type: integer }, totalCentavos: { type: integer } } } }
                   comissaoPontosBase: { type: integer }
+                  taxaPixPontosBase: { type: integer }
         "401": { $ref: "#/components/responses/SemLogin" }
         "403": { $ref: "#/components/responses/Proibido" }
   /gestao/admin/pedidos:
@@ -329,6 +351,50 @@ paths:
         content: { application/json: { schema: { type: object, required: [comissaoPontosBase], properties: { comissaoPontosBase: { type: integer, minimum: 0, maximum: 5000 } } } } }
       responses:
         "200": { description: comissão salva, content: { application/json: { schema: { type: object, properties: { comissaoPontosBase: { type: integer } } } } } }
+        "400": { $ref: "#/components/responses/Invalido" }
+        "403": { $ref: "#/components/responses/Proibido" }
+  /gestao/config:
+    get:
+      tags: [admin]
+      summary: Regras públicas (comissão, taxa do Pix e tabela de preço sugerido) para o simulador do anúncio. Sem login.
+      security: []
+      responses:
+        "200": { description: configuração atual, content: { application/json: { schema: { $ref: "#/components/schemas/Configuracao" } } } }
+  /gestao/admin/configuracao:
+    get:
+      tags: [admin]
+      summary: Comissão, taxa do Pix e tabela de preço sugerido atuais
+      security: [{ token: [] }]
+      responses:
+        "200": { description: configuração, content: { application/json: { schema: { $ref: "#/components/schemas/Configuracao" } } } }
+        "401": { $ref: "#/components/responses/SemLogin" }
+        "403": { $ref: "#/components/responses/Proibido" }
+  /gestao/admin/taxa-pix:
+    put:
+      tags: [admin]
+      summary: Altera a taxa do Pix (pontos-base, até 10%). Vale só para pedidos novos.
+      security: [{ token: [] }]
+      requestBody:
+        required: true
+        content: { application/json: { schema: { type: object, required: [taxaPixPontosBase], properties: { taxaPixPontosBase: { type: integer, minimum: 0, maximum: 1000 } } } } }
+      responses:
+        "200": { description: taxa salva, content: { application/json: { schema: { type: object, properties: { taxaPixPontosBase: { type: integer } } } } } }
+        "400": { $ref: "#/components/responses/Invalido" }
+        "403": { $ref: "#/components/responses/Proibido" }
+  /gestao/admin/precos-sugeridos:
+    put:
+      tags: [admin]
+      summary: Troca a tabela de preço sugerido inteira (uma faixa por categoria e condição, sem repetir)
+      security: [{ token: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { type: object, required: [faixas], properties: { faixas: { type: array, minItems: 1, maxItems: 20, items: { $ref: "#/components/schemas/FaixaPreco" } } } }
+      responses:
+        "200":
+          description: tabela salva
+          content: { application/json: { schema: { type: object, properties: { precosSugeridos: { type: array, items: { $ref: "#/components/schemas/FaixaPreco" } } } } } }
         "400": { $ref: "#/components/responses/Invalido" }
         "403": { $ref: "#/components/responses/Proibido" }
   /gestao/admin/repasses:
@@ -387,6 +453,32 @@ paths:
         "403": { $ref: "#/components/responses/Proibido" }
         "404": { $ref: "#/components/responses/NaoEncontrado" }
 
+  /config:
+    get:
+      tags: [admin]
+      summary: Frete fixo atual e minutos de reserva, para a sacola e o checkout (catálogo). Sem login.
+      security: []
+      responses:
+        "200": { description: regras, content: { application/json: { schema: { type: object, properties: { freteCentavos: { type: integer }, reservaMinutos: { type: integer } } } } } }
+  /admin/frete:
+    get:
+      tags: [admin]
+      summary: Frete fixo atual (catálogo)
+      security: [{ token: [] }]
+      responses:
+        "200": { description: frete, content: { application/json: { schema: { type: object, properties: { freteCentavos: { type: integer } } } } } }
+        "403": { $ref: "#/components/responses/Proibido" }
+    put:
+      tags: [admin]
+      summary: Altera o frete fixo (centavos, até R$ 200,00). Vale para pedidos novos.
+      security: [{ token: [] }]
+      requestBody:
+        required: true
+        content: { application/json: { schema: { type: object, required: [freteCentavos], properties: { freteCentavos: { type: integer, minimum: 0, maximum: 20000 } } } } }
+      responses:
+        "200": { description: frete salvo, content: { application/json: { schema: { type: object, properties: { freteCentavos: { type: integer } } } } } }
+        "400": { $ref: "#/components/responses/Invalido" }
+        "403": { $ref: "#/components/responses/Proibido" }
   /admin/pecas:
     get:
       tags: [admin]
