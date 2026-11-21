@@ -7,7 +7,7 @@ import { Contagem } from "@/components/sacola/Contagem";
 import { ButtonLink } from "@/components/ui/Button";
 import { SectionHeading } from "@/components/ui/SectionHeading";
 import { Sticker } from "@/components/ui/Sticker";
-import { FRETE_FIXO_CENTAVOS } from "@/lib/config";
+import { useFrete } from "@/lib/useFrete";
 import { formatarPreco } from "@/lib/format";
 import { catalogoUrl, pecaUrl, ROUTES } from "@/lib/routes";
 import { subtotalSacola, useSacola } from "@/lib/sacola";
@@ -15,6 +15,7 @@ import { subtotalSacola, useSacola } from "@/lib/sacola";
 export default function CarrinhoPage() {
   const { itens, remover, removerExpirados } = useSacola();
   const [montado, setMontado] = useState(false);
+  const frete = useFrete();
 
   useEffect(() => {
     setMontado(true);
@@ -83,11 +84,11 @@ export default function CarrinhoPage() {
             </div>
             <div className="flex justify-between">
               <dt>frete fixo</dt>
-              <dd>{formatarPreco(FRETE_FIXO_CENTAVOS)}</dd>
+              <dd>{formatarPreco(frete)}</dd>
             </div>
             <div className="flex justify-between border-t-2 border-roxo/20 pt-2 text-base font-bold">
               <dt>total</dt>
-              <dd>{formatarPreco(subtotal + FRETE_FIXO_CENTAVOS)}</dd>
+              <dd>{formatarPreco(subtotal + frete)}</dd>
             </div>
           </dl>
           <ButtonLink href={ROUTES.checkout} size="lg" className="w-full">

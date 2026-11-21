@@ -11,13 +11,23 @@ const usuaria = { id: "1", nome: "Ana Souza", email: "ana@exemplo.com", perfil: 
 const ludy = { id: "9", nome: "Ludy Administração", email: "ludy@desapego.test", perfil: "ADMIN_MASTER" as const };
 const sessaoDe = (usuario: typeof usuaria | typeof ludy) => ({ usuario, accessToken: "ey.x.y", expiraEm: "" });
 
+const FAIXAS = [
+  { categoria: "bolsas", condicao: "otimo_estado", minimoCentavos: 5000, maximoCentavos: 25000 },
+  { categoria: "calcados", condicao: "bom_estado", minimoCentavos: 3000, maximoCentavos: 13500 },
+];
+
 const json = (corpo: unknown, status = 200) => new Response(JSON.stringify(corpo), { status });
 
 /** Respostas falsas do backend para cada rota do painel. */
 function backendFalso() {
   return vi.fn(async (url: string, init?: RequestInit) => {
     if (url.startsWith("/api/gestao/admin/resumo"))
-      return json({ pedidosPorStatus: { PAGO: 2 }, vendas: { quantidade: 2, totalCentavos: 20000, comissaoCentavos: 2000 }, repasses: {}, comissaoPontosBase: 1000 });
+      return json({
+        pedidosPorStatus: { PAGO: 2 }, vendas: { quantidade: 2, totalCentavos: 20000, comissaoCentavos: 2000, taxaPixCentavos: 0 },
+        repasses: {},
+        comissaoPontosBase: 1000,
+        taxaPixPontosBase: 0,
+      });
     if (url.startsWith("/api/auth/admin/usuarios") && init?.method === "POST") return json({ usuario: { ...usuaria, bloqueada: true } });
     if (url.startsWith("/api/auth/admin/usuarios"))
       return json({ usuarios: [{ ...ludy, bloqueada: false, criado_em: "" }, { ...usuaria, bloqueada: false, criado_em: "" }] });
@@ -26,6 +36,11 @@ function backendFalso() {
     if (url.startsWith("/api/gestao/admin/comissao") && init?.method === "PUT") return json(JSON.parse(String(init.body)));
     if (url.startsWith("/api/gestao/admin/comissao")) return json({ comissaoPontosBase: 1000 });
     if (url.startsWith("/api/gestao/admin/repasses")) return json({ repasses: [] });
+    if (url.startsWith("/api/gestao/admin/configuracao")) return json({ comissaoPontosBase: 1000, taxaPixPontosBase: 0, precosSugeridos: FAIXAS });
+    if (url.startsWith("/api/gestao/admin/taxa-pix")) return json(JSON.parse(String(init!.body)));
+    if (url.startsWith("/api/gestao/admin/precos-sugeridos")) return json({ precosSugeridos: JSON.parse(String(init!.body)).faixas });
+    if (url.startsWith("/api/admin/frete") && init?.method === "PUT") return json(JSON.parse(String(init.body)));
+    if (url.startsWith("/api/admin/frete")) return json({ freteCentavos: 1990 });
     return json({ erro: "rota não encontrada." }, 404);
   });
 }
@@ -52,13 +67,13 @@ describe("painel da administração", () => {
     await vi.waitFor(() => expect(replace).toHaveBeenCalledWith("/entrar"));
   });
 
-  it("a administradora master vê as seis seções e a visão geral", async () => {
+  it("a administradora master vê as nove seções e a visão geral", async () => {
     vi.stubGlobal("fetch", backendFalso());
     useSessao.setState({ sessao: sessaoDe(ludy) });
     render(<AdminPage />);
     const nav = screen.getByRole("navigation", { name: "Seções do painel" });
-    expect(within(nav).getAllByRole("link")).toHaveLength(6);
-    for (const titulo of [/visão geral/, /usuárias/, /anúncios/, /^pedidos$/, /comissão da plataforma/, /repasses/]) {
+    expect(within(nav).getAllByRole("link")).toHaveLength(9);
+    for (const titulo of [/visão geral/, /usuárias/, /anúncios/, /^pedidos$/, /comissão da plataforma/, /taxa do Pix/, /frete fixo/, /preço sugerido/, /repasses/]) {
       expect(screen.getByRole("heading", { level: 2, name: titulo })).toBeInTheDocument();
     }
     expect(await screen.findByText("R$ 200,00")).toBeInTheDocument();
@@ -96,5 +111,59 @@ describe("painel da administração", () => {
     expect(await screen.findByText(/comissão alterada para 12,50%/)).toBeInTheDocument();
     const put = fetchFalso.mock.calls.find((c) => c[1]?.method === "PUT")!;
     expect(JSON.parse(String(put[1]!.body))).toEqual({ comissaoPontosBase: 1250 });
+  });
+
+  it("altera a taxa do Pix (até 10%) e o frete (em reais), validando antes de enviar", async () => {
+    const user = userEvent.setup();
+    const fetchFalso = backendFalso();
+    vi.stubGlobal("fetch", fetchFalso);
+    useSessao.setState({ sessao: sessaoDe(ludy) });
+    render(<AdminPage />);
+
+    const taxa = await screen.findByLabelText("nova taxa do Pix (%)");
+    await vi.waitFor(() => expect(taxa).toHaveValue("0,00"));
+    await user.clear(taxa);
+    await user.type(taxa, "11");
+    await user.click(screen.getByRole("button", { name: "salvar taxa" }));
+    expect(await screen.findByText(/entre 0 e 10/)).toBeInTheDocument();
+    await user.clear(taxa);
+    await user.type(taxa, "0,99");
+    await user.click(screen.getByRole("button", { name: "salvar taxa" }));
+    expect(await screen.findByText(/taxa do Pix alterada para 0,99%/)).toBeInTheDocument();
+    expect(fetchFalso).toHaveBeenCalledWith("/api/gestao/admin/taxa-pix", expect.objectContaining({ method: "PUT", body: JSON.stringify({ taxaPixPontosBase: 99 }) }));
+
+    const frete = screen.getByLabelText("novo frete (R$)");
+    await vi.waitFor(() => expect(frete).toHaveValue("19,90"));
+    await user.clear(frete);
+    await user.type(frete, "250");
+    await user.click(screen.getByRole("button", { name: "salvar frete" }));
+    expect(await screen.findByText(/entre R\$ 0,00 e R\$ 200,00/)).toBeInTheDocument();
+    await user.clear(frete);
+    await user.type(frete, "24,50");
+    await user.click(screen.getByRole("button", { name: "salvar frete" }));
+    expect(await screen.findByText(/frete alterado para R\$\s24,50/)).toBeInTheDocument();
+    expect(fetchFalso).toHaveBeenCalledWith("/api/admin/frete", expect.objectContaining({ method: "PUT", body: JSON.stringify({ freteCentavos: 2450 }) }));
+  });
+
+  it("edita a tabela de preço sugerido e recusa mínimo maior que o máximo", async () => {
+    const user = userEvent.setup();
+    const fetchFalso = backendFalso();
+    vi.stubGlobal("fetch", fetchFalso);
+    useSessao.setState({ sessao: sessaoDe(ludy) });
+    render(<AdminPage />);
+
+    const minimo = await screen.findByLabelText("mínimo de bolsas, ótimo estado");
+    await user.clear(minimo);
+    await user.type(minimo, "300");
+    await user.click(screen.getByRole("button", { name: "salvar tabela" }));
+    expect(await screen.findByText(/confira a faixa de bolsas, ótimo estado/)).toBeInTheDocument();
+    expect(minimo).toHaveFocus();
+
+    await user.clear(minimo);
+    await user.type(minimo, "60");
+    await user.click(screen.getByRole("button", { name: "salvar tabela" }));
+    expect(await screen.findByText(/tabela de preço sugerido salva/)).toBeInTheDocument();
+    const put = fetchFalso.mock.calls.find((c) => String(c[0]).includes("precos-sugeridos"))!;
+    expect(JSON.parse(String(put[1]!.body)).faixas[0]).toEqual({ categoria: "bolsas", condicao: "otimo_estado", minimoCentavos: 6000, maximoCentavos: 25000 });
   });
 });

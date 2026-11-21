@@ -3,6 +3,7 @@ import express, { type NextFunction, type Request, type Response } from "express
 import helmet from "helmet";
 import { z } from "zod";
 import { exigirAdminMaster, exigirLogin, type Autenticada } from "../../comum/autenticacao.js";
+import { CATEGORIAS, CONDICOES, type CategoriaSlug } from "../../comum/categorias.js";
 import { dividirValor, PONTOS_BASE_100 } from "../../comum/dinheiro.js";
 import { cors, exigirApiKey, limiteRequisicoes } from "../../comum/seguranca.js";
 import type { BancoPedidos, Pedido } from "./banco.js";
@@ -39,6 +40,29 @@ const esquemaNovoPedido = z
     endereco: z.record(z.string(), z.string().max(160)),
   })
   .refine((p) => p.compradoraId !== p.vendedoraId, { path: ["compradoraId"], message: "a vendedora não pode comprar a própria peça." });
+
+/** Taxa do Pix: até 10% (1000 pontos-base). */
+const TAXA_PIX_MAXIMA = 1000;
+
+/** Tabela de preço sugerido enviada pelo painel do admin. */
+const esquemaPrecos = z.object({
+  faixas: z
+    .array(
+      z
+        .object({
+          categoria: z.enum(CATEGORIAS.map((c) => c.slug) as [CategoriaSlug, ...CategoriaSlug[]]),
+          condicao: z.enum(CONDICOES),
+          minimoCentavos: centavos.positive("o mínimo precisa ser maior que zero.").max(10_000_000),
+          maximoCentavos: centavos.positive().max(10_000_000),
+        })
+        .refine((f) => f.minimoCentavos <= f.maximoCentavos, { path: ["maximoCentavos"], message: "o máximo não pode ser menor que o mínimo." }),
+    )
+    .min(1)
+    .max(CATEGORIAS.length * CONDICOES.length)
+    .refine((faixas) => new Set(faixas.map((f) => `${f.categoria}/${f.condicao}`)).size === faixas.length, {
+      message: "cada categoria e condição aparece uma vez só.",
+    }),
+});
 
 /** Endereço de entrega só aparece para a vendedora do pedido (Req. 013). */
 const semEndereco = ({ endereco: _endereco, ...resto }: Pedido) => resto;
@@ -82,12 +106,17 @@ export function criarAppPedidos(banco: BancoPedidos, config: ConfigPedidos, agor
       await banco.mudarStatus(p.id, para);
       const base = { vendedoraId: p.vendedoraId, pedidoId: p.id, repasseId: null };
       if (para === "PAGO") {
+        // a venda paga gera os três lançamentos: vendedora + comissão + taxa = total cobrado
         await banco.lancar({ ...base, tipo: "venda", pendenteCentavos: p.vendedoraCentavos, disponivelCentavos: 0 });
+        await banco.lancar({ ...base, conta: "comissao", tipo: "venda", pendenteCentavos: 0, disponivelCentavos: p.comissaoCentavos });
+        await banco.lancar({ ...base, conta: "taxa_pix", tipo: "venda", pendenteCentavos: 0, disponivelCentavos: p.taxaPixCentavos });
       } else if (para === "ENTREGUE") {
         // só agora o dinheiro da venda fica disponível para saque
         await banco.lancar({ ...base, tipo: "liberacao", pendenteCentavos: -p.vendedoraCentavos, disponivelCentavos: p.vendedoraCentavos });
       } else if (para === "CANCELADO" && p.status === "PAGO") {
         await banco.lancar({ ...base, tipo: "estorno", pendenteCentavos: -p.vendedoraCentavos, disponivelCentavos: 0 });
+        await banco.lancar({ ...base, conta: "comissao", tipo: "estorno", pendenteCentavos: 0, disponivelCentavos: -p.comissaoCentavos });
+        await banco.lancar({ ...base, conta: "taxa_pix", tipo: "estorno", pendenteCentavos: 0, disponivelCentavos: -p.taxaPixCentavos });
       }
       return { ...p, status: para };
     });
@@ -104,9 +133,13 @@ export function criarAppPedidos(banco: BancoPedidos, config: ConfigPedidos, agor
   interno.post("/pedidos", async (req, res) => {
     const dados = esquemaNovoPedido.parse(req.body);
     const subtotal = dados.itens.reduce((soma, i) => soma + i.precoCentavos, 0);
-    // a comissão vigente fica congelada no pedido (Req. 011 e 014)
+    const total = subtotal + dados.freteCentavos;
+    // a comissão e a taxa vigentes ficam congeladas no pedido (Req. 011 e 014)
     const comissao = await banco.comissaoAtual();
+    const taxaPix = await banco.taxaPixAtual();
     const divisao = dividirValor(subtotal, comissao);
+    // o Pix cobra sobre o valor inteiro que a compradora paga (peças + frete)
+    const taxaPixCentavos = dividirValor(total, taxaPix).comissaoCentavos;
     const pedido = await banco.inserirPedido({
       id: randomUUID(),
       compradoraId: dados.compradoraId,
@@ -115,10 +148,13 @@ export function criarAppPedidos(banco: BancoPedidos, config: ConfigPedidos, agor
       endereco: dados.endereco,
       subtotalCentavos: subtotal,
       freteCentavos: dados.freteCentavos,
-      totalCentavos: subtotal + dados.freteCentavos,
+      totalCentavos: total,
       comissaoPontosBase: comissao,
       comissaoCentavos: divisao.comissaoCentavos,
-      vendedoraCentavos: divisao.vendedoraCentavos + dados.freteCentavos,
+      taxaPixPontosBase: taxaPix,
+      taxaPixCentavos,
+      // nunca negativo: comissão ≤ 50% das peças e taxa ≤ 10% do total
+      vendedoraCentavos: divisao.vendedoraCentavos + dados.freteCentavos - taxaPixCentavos,
       status: "AGUARDANDO_PAGAMENTO",
     });
     res.status(201).json(pedido);
@@ -191,12 +227,52 @@ export function criarAppPedidos(banco: BancoPedidos, config: ConfigPedidos, agor
     res.status(201).json(repasse);
   });
 
+  /**
+   * Regras públicas da plataforma: o simulador de ganho e a sugestão de preço do anúncio
+   * (Módulo 02) leem daqui. Só leitura; quem altera é o painel do admin.
+   */
+  const configuracao = async () => ({
+    comissaoPontosBase: await banco.comissaoAtual(),
+    taxaPixPontosBase: await banco.taxaPixAtual(),
+    precosSugeridos: await banco.precosSugeridos(),
+  });
+
+  app.get("/config", async (_req, res) => {
+    res.json(await configuracao());
+  });
+
   // ---- painel do admin: só a administradora master ----
   const admin = express.Router();
   admin.use(login, exigirAdminMaster);
 
   admin.get("/resumo", async (_req, res) => {
-    res.json({ ...(await banco.resumo()), comissaoPontosBase: await banco.comissaoAtual() });
+    res.json({ ...(await banco.resumo()), comissaoPontosBase: await banco.comissaoAtual(), taxaPixPontosBase: await banco.taxaPixAtual() });
+  });
+
+  admin.get("/configuracao", async (_req, res) => {
+    res.json(await configuracao());
+  });
+
+  /** Nova taxa do Pix: como a comissão, vale só para pedidos novos. */
+  admin.put("/taxa-pix", async (req, res) => {
+    const { taxaPixPontosBase } = z
+      .object({
+        taxaPixPontosBase: z
+          .number()
+          .int("use pontos-base inteiros (99 = 0,99%).")
+          .min(0)
+          .max(TAXA_PIX_MAXIMA, "a taxa do Pix pode ir até 10%."),
+      })
+      .parse(req.body);
+    await banco.definirTaxaPix(taxaPixPontosBase);
+    res.json({ taxaPixPontosBase });
+  });
+
+  /** Troca a tabela de preço sugerido inteira: uma faixa por categoria e condição, sem repetir. */
+  admin.put("/precos-sugeridos", async (req, res) => {
+    const { faixas } = esquemaPrecos.parse(req.body);
+    await banco.emFila(() => banco.definirPrecosSugeridos(faixas));
+    res.json({ precosSugeridos: await banco.precosSugeridos() });
   });
 
   admin.get("/pedidos", async (req, res) => {

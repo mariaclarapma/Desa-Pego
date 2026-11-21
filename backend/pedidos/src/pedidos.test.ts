@@ -16,10 +16,11 @@ const CHAVE = "chave-interna-de-teste";
 
 let banco: BancoPedidos;
 let app: ReturnType<typeof criarAppPedidos>;
+const URL_TESTE = process.env.TEST_DATABASE_URL || undefined;
+const SCHEMA = URL_TESTE ? `teste_${randomBytes(6).toString("hex")}` : "pedidos";
 
 beforeAll(async () => {
-  const url = process.env.TEST_DATABASE_URL || undefined;
-  banco = await abrirBancoPedidos(url, url ? `teste_${randomBytes(6).toString("hex")}` : "pedidos");
+  banco = await abrirBancoPedidos(URL_TESTE, SCHEMA);
 });
 beforeEach(async () => {
   await banco.limpar();
@@ -49,7 +50,7 @@ async function criarPedido(precoCentavos = 10_000, freteCentavos = 1990) {
     .set(interno)
     .send({ compradoraId: COMPRADORA, vendedoraId: VENDEDORA, itens: [{ id: "peca-1", titulo: "Jaqueta", precoCentavos }], freteCentavos, endereco: ENDERECO })
     .expect(201);
-  return res.body as { id: string; vendedoraCentavos: number; comissaoCentavos: number; totalCentavos: number; comissaoPontosBase: number };
+  return res.body as { id: string; vendedoraCentavos: number; comissaoCentavos: number; totalCentavos: number; comissaoPontosBase: number; taxaPixCentavos: number };
 }
 
 const pagar = (id: string) => request(app).post(`/interno/pedidos/${id}/pagamento-confirmado`).set(interno);
@@ -208,7 +209,8 @@ describe("carteira: saldo só é liberado depois do recebimento", () => {
     await receber(p.id);
     const final = await carteira();
     expect(final).toMatchObject({ pendenteCentavos: 0, disponivelCentavos: 9000 });
-    expect(final.extrato.map((l: { tipo: string }) => l.tipo).sort()).toEqual(["liberacao", "venda"]);
+    const daVendedora = final.extrato.filter((l: { conta: string }) => l.conta === "vendedora");
+    expect(daVendedora.map((l: { tipo: string }) => l.tipo).sort()).toEqual(["liberacao", "venda"]);
   });
 
   it("pedido pago e cancelado estorna o pendente", async () => {
@@ -311,8 +313,119 @@ describe("admin: comissão e acesso ao painel", () => {
     await pagar(a.id);
     const resumo = (await request(app).get("/admin/resumo").set(await como(ADMIN, "ADMIN_MASTER")).expect(200)).body;
     expect(resumo.pedidosPorStatus).toEqual({ PAGO: 1, AGUARDANDO_PAGAMENTO: 1 });
-    expect(resumo.vendas).toEqual({ quantidade: 1, totalCentavos: 10_000, comissaoCentavos: 1000 });
+    expect(resumo.vendas).toEqual({ quantidade: 1, totalCentavos: 10_000, comissaoCentavos: 1000, taxaPixCentavos: 0 });
     const lista = (await request(app).get("/admin/pedidos?status=PAGO").set(await como(ADMIN, "ADMIN_MASTER")).expect(200)).body.pedidos;
     expect(lista.map((p: { id: string }) => p.id)).toEqual([a.id]);
+  });
+});
+
+type LancamentoTeste = { conta: string; tipo: string; pedidoId: string | null; pendenteCentavos: number; disponivelCentavos: number };
+
+describe("livro-razão: lançamentos de vendedora, comissão e taxa do Pix", () => {
+  const ludy = () => como(ADMIN, "ADMIN_MASTER");
+
+  it("venda paga gera três lançamentos que somam exatamente o total cobrado", async () => {
+    await request(app).put("/admin/taxa-pix").set(await ludy()).send({ taxaPixPontosBase: 99 }).expect(200); // 0,99%
+    const p = await criarPedido(10_001, 1990); // total 11 991
+    expect(p).toMatchObject({ totalCentavos: 11_991, comissaoCentavos: 1000, taxaPixCentavos: 119, taxaPixPontosBase: 99 });
+    expect(p.vendedoraCentavos).toBe(11_991 - 1000 - 119);
+
+    await pagar(p.id).expect(200);
+    const { extrato, pendenteCentavos } = await carteira();
+    const daVenda = (extrato as LancamentoTeste[]).filter((l) => l.pedidoId === p.id && l.tipo === "venda");
+    expect(Object.fromEntries(daVenda.map((l) => [l.conta, l.pendenteCentavos + l.disponivelCentavos]))).toEqual({
+      vendedora: p.vendedoraCentavos,
+      comissao: 1000,
+      taxa_pix: 119,
+    });
+    expect(daVenda.reduce((soma, l) => soma + l.pendenteCentavos + l.disponivelCentavos, 0)).toBe(p.totalCentavos);
+    // o saldo da vendedora soma só os lançamentos dela
+    expect(pendenteCentavos).toBe(p.vendedoraCentavos);
+  });
+
+  it("cancelar um pedido pago estorna as três contas", async () => {
+    await request(app).put("/admin/taxa-pix").set(await ludy()).send({ taxaPixPontosBase: 100 }).expect(200);
+    const p = await criarPedido(10_000, 0);
+    await pagar(p.id);
+    await request(app).post(`/admin/pedidos/${p.id}/cancelar`).set(await ludy()).expect(200);
+    const extrato = (await carteira()).extrato as LancamentoTeste[];
+    for (const conta of ["vendedora", "comissao", "taxa_pix"]) {
+      const soma = extrato.filter((l) => l.conta === conta).reduce((t, l) => t + l.pendenteCentavos + l.disponivelCentavos, 0);
+      expect(soma, conta).toBe(0);
+    }
+    expect(extrato).toHaveLength(6); // nada foi apagado: 3 da venda + 3 do estorno
+  });
+
+  it("nova taxa do Pix vale só para pedidos novos", async () => {
+    const antigo = await criarPedido(10_000, 0);
+    await request(app).put("/admin/taxa-pix").set(await ludy()).send({ taxaPixPontosBase: 500 }).expect(200);
+    const novo = await criarPedido(10_000, 0);
+    expect(novo).toMatchObject({ taxaPixPontosBase: 500, taxaPixCentavos: 500, vendedoraCentavos: 8500 });
+    await pagar(antigo.id);
+    expect(await carteira()).toMatchObject({ pendenteCentavos: 9000 });
+  });
+
+  it("taxa do Pix inválida é recusada (fração, negativa, acima de 10% ou texto)", async () => {
+    for (const valor of [9.5, -1, 1001, "99"]) await request(app).put("/admin/taxa-pix").set(await ludy()).send({ taxaPixPontosBase: valor }).expect(400);
+  });
+
+  it.skipIf(!URL_TESTE)("no Postgres, o banco recusa alterar ou apagar um lançamento", async () => {
+    const p = await criarPedido(10_000, 0);
+    await pagar(p.id);
+    const { default: pg } = await import("pg");
+    const cliente = new pg.Client({ connectionString: URL_TESTE });
+    await cliente.connect();
+    try {
+      await expect(cliente.query(`UPDATE ${SCHEMA}.lancamentos SET pendente_centavos = 1`)).rejects.toThrow(/imutáveis/);
+      await expect(cliente.query(`DELETE FROM ${SCHEMA}.lancamentos`)).rejects.toThrow(/imutáveis/);
+    } finally {
+      await cliente.end();
+    }
+    expect(await carteira()).toMatchObject({ pendenteCentavos: 9000 });
+  });
+});
+
+describe("admin: configurações da plataforma", () => {
+  const ludy = () => como(ADMIN, "ADMIN_MASTER");
+  const faixa = (categoria: string, condicao: string, minimoCentavos: number, maximoCentavos: number) => ({ categoria, condicao, minimoCentavos, maximoCentavos });
+
+  it("sem configuração, vale a tabela inicial: uma faixa por categoria e condição", async () => {
+    const config = (await request(app).get("/config").expect(200)).body;
+    expect(config).toMatchObject({ comissaoPontosBase: 1000, taxaPixPontosBase: 0 });
+    expect(config.precosSugeridos).toHaveLength(20);
+    for (const f of config.precosSugeridos) expect(f.minimoCentavos).toBeLessThanOrEqual(f.maximoCentavos);
+  });
+
+  it("o admin troca a tabela de preço sugerido e a rota pública mostra a nova", async () => {
+    const faixas = [faixa("bolsas", "otimo_estado", 8000, 30_000), faixa("calcados", "bom_estado", 2000, 9000)];
+    const r = await request(app).put("/admin/precos-sugeridos").set(await ludy()).send({ faixas }).expect(200);
+    expect(r.body.precosSugeridos).toEqual(faixas);
+    expect((await request(app).get("/config").expect(200)).body.precosSugeridos).toEqual(faixas);
+    expect((await request(app).get("/admin/configuracao").set(await ludy()).expect(200)).body.precosSugeridos).toEqual(faixas);
+  });
+
+  it("tabela inválida é recusada", async () => {
+    const invalidas = [
+      [faixa("bolsas", "otimo_estado", 9000, 8000)], // mínimo maior que o máximo
+      [faixa("veiculos", "otimo_estado", 1000, 2000)], // categoria fora da moda
+      [faixa("bolsas", "seminova", 1000, 2000)], // condição que não existe
+      [faixa("bolsas", "otimo_estado", 0, 2000)], // mínimo zero
+      [faixa("bolsas", "otimo_estado", 1000.5, 2000)], // fração de centavo
+      [faixa("bolsas", "otimo_estado", 1000, 2000), faixa("bolsas", "otimo_estado", 3000, 4000)], // repetida
+      [],
+    ];
+    for (const faixas of invalidas) await request(app).put("/admin/precos-sugeridos").set(await ludy()).send({ faixas }).expect(400);
+    expect((await request(app).get("/config").expect(200)).body.precosSugeridos).toHaveLength(20);
+  });
+
+  it("quem não é administradora não altera a configuração (403); sem login, 401", async () => {
+    for (const perfil of ["USUARIO", "ADMIN"]) {
+      const cabecalho = await como(OUTRA, perfil);
+      await request(app).get("/admin/configuracao").set(cabecalho).expect(403);
+      await request(app).put("/admin/taxa-pix").set(cabecalho).send({ taxaPixPontosBase: 0 }).expect(403);
+      await request(app).put("/admin/precos-sugeridos").set(cabecalho).send({ faixas: [faixa("bolsas", "otimo_estado", 1, 2)] }).expect(403);
+    }
+    await request(app).put("/admin/taxa-pix").send({ taxaPixPontosBase: 0 }).expect(401);
+    expect((await request(app).get("/config").expect(200)).body.taxaPixPontosBase).toBe(0);
   });
 });

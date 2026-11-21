@@ -36,9 +36,15 @@ export interface Pedido {
   pagoEm?: string;
 }
 
+/** Regras definidas pela administração no painel (sem valor = vale o padrão do servidor). */
+export interface ConfiguracaoLoja {
+  freteCentavos?: number;
+}
+
 interface Dados {
   pecas: Peca[];
   pedidos: Pedido[];
+  configuracao?: ConfiguracaoLoja;
 }
 
 export type Loja = ReturnType<typeof abrirLoja>;
@@ -68,6 +74,7 @@ export function abrirLoja(arquivo: string | null, semente: string) {
     peca: (id: string) => dados.pecas.find((p) => p.id === id),
     pedido: (id: string) => dados.pedidos.find((p) => p.id === id),
     listarPedidos: () => dados.pedidos,
+    configuracao: (): ConfiguracaoLoja => dados.configuracao ?? {},
     alterarEmFila,
     novoId: () => randomBytes(6).toString("hex"),
     /** Só para os testes: volta ao conteúdo da semente. */

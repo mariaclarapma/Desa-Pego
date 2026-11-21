@@ -27,6 +27,7 @@ class Recusa extends Error {
 }
 
 const id = z.string().trim().min(1).max(80).regex(/^[\w-]+$/, "id inválido.");
+const FRETE_MAXIMO_CENTAVOS = 20_000;
 const texto = (max: number) => z.string().trim().min(1).max(max);
 
 /** Corpo do POST /pedidos: preço, frete e total são calculados aqui, nunca vêm do navegador. */
@@ -80,6 +81,13 @@ export function criarAppCatalogo(loja: Loja, config: ConfigCatalogo, agora: () =
     return peca;
   };
   const pecaPublica = ({ oculta: _oculta, motivoOculta: _motivo, ...p }: Peca) => ({ ...p, status: statusAtual(p, agora()) });
+  /** Frete fixo: o que a administração definiu no painel ou, se nada, o padrão do servidor. */
+  const freteAtual = () => loja.configuracao().freteCentavos ?? config.freteCentavos;
+
+  /** Regras públicas usadas pela sacola e pelo checkout para mostrar o frete antes do pedido. */
+  app.get("/config", (_req, res) => {
+    res.json({ freteCentavos: freteAtual(), reservaMinutos: config.reservaMinutos });
+  });
 
   app.get("/pecas", (_req, res) => {
     res.json(loja.listarPecas().filter((p) => !p.oculta).map(pecaPublica));
@@ -125,6 +133,7 @@ export function criarAppCatalogo(loja: Loja, config: ConfigCatalogo, agora: () =
         return p;
       });
       const subtotal = pecas.reduce((soma, p) => soma + p.precoCentavos, 0);
+      const frete = freteAtual();
       const novoId = loja.novoId();
       const novo: Pedido = {
         id: novoId,
@@ -132,10 +141,10 @@ export function criarAppCatalogo(loja: Loja, config: ConfigCatalogo, agora: () =
         endereco: dados.endereco,
         itens: pecas.map((p) => ({ id: p.id, titulo: p.titulo, precoCentavos: p.precoCentavos })),
         subtotalCentavos: subtotal,
-        freteCentavos: config.freteCentavos,
-        totalCentavos: subtotal + config.freteCentavos,
+        freteCentavos: frete,
+        totalCentavos: subtotal + frete,
         status: "aguardando_pagamento",
-        pixCopiaECola: pixSimulado(subtotal + config.freteCentavos, novoId),
+        pixCopiaECola: pixSimulado(subtotal + frete, novoId),
         pixExpiraEm: pecas.map((p) => p.reservadaAte!).sort()[0],
         criadoEm: new Date(agora()).toISOString(),
       };
@@ -230,6 +239,21 @@ export function criarAppCatalogo(loja: Loja, config: ConfigCatalogo, agora: () =
       return { ...p };
     });
     res.json(peca);
+  });
+
+  admin.get("/frete", (_req, res) => {
+    res.json({ freteCentavos: freteAtual() });
+  });
+
+  /** Novo frete fixo: vale para os pedidos criados daqui em diante (os antigos guardam o deles). */
+  admin.put("/frete", escrita, async (req, res) => {
+    const { freteCentavos } = z
+      .object({ freteCentavos: z.number().int("use centavos inteiros.").min(0).max(FRETE_MAXIMO_CENTAVOS, "o frete pode ir até R$ 200,00.") })
+      .parse(req.body);
+    await loja.alterarEmFila((d) => {
+      d.configuracao = { ...d.configuracao, freteCentavos };
+    });
+    res.json({ freteCentavos });
   });
 
   app.use("/admin", admin);
