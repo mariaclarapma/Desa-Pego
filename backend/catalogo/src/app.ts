@@ -2,7 +2,7 @@ import express, { type NextFunction, type Request, type Response } from "express
 import helmet from "helmet";
 import { z } from "zod";
 import { exigirAdminMaster, exigirLogin } from "../../comum/autenticacao.js";
-import { categoriaPermitida } from "../../comum/categorias.js";
+import { categoriaPermitida, CONDICOES } from "../../comum/categorias.js";
 import { cors, exigirApiKey, limiteRequisicoes } from "../../comum/seguranca.js";
 import type { Loja, Peca, Pedido } from "./loja.js";
 
@@ -44,6 +44,48 @@ const esquemaPedido = z.object({
   }),
   itens: z.array(id).min(1).max(20),
 });
+
+// ---- vitrine (Req. 007): parâmetros do GET /pecas ----
+
+const POR_PAGINA_PADRAO = 12;
+const POR_PAGINA_MAXIMO = 48;
+const PRECO_MAXIMO_CENTAVOS = 10_000_000; // R$ 100.000,00: só um teto contra valores absurdos
+
+/**
+ * Na query string tudo chega como texto, e o formulário GET da vitrine manda os campos
+ * vazios (`?busca=&categoria=`). Campo vazio conta como "não informado".
+ */
+const opcional = <T extends z.ZodType>(esquema: T) => z.preprocess((v) => (v === "" ? undefined : v), esquema.optional());
+
+/** Inteiro sem sinal vindo da URL ("12" → 12). Recusa "-1", "10.5", "abc" e parâmetro repetido. */
+const inteiro = (min: number, max: number) =>
+  z
+    .string()
+    .regex(/^\d+$/, "use um número inteiro, sem sinal nem vírgula.")
+    .transform(Number)
+    .pipe(z.number().min(min, `o mínimo é ${min}.`).max(max, `o máximo é ${max}.`));
+
+const ORDENS =["recentes", "menor-preco", "maior-preco"] as const;
+
+const esquemaVitrine = z
+  .object({
+    busca: opcional(z.string().trim().max(100, "a busca pode ter até 100 caracteres.")),
+    categoria: opcional(z.string().refine(categoriaPermitida, "categoria inválida.")),
+    tamanho: opcional(z.string().trim().max(20)),
+    condicao: opcional(z.enum(CONDICOES, "condição inválida.")),
+    precoMin: opcional(inteiro(0, PRECO_MAXIMO_CENTAVOS)),
+    precoMax: opcional(inteiro(0, PRECO_MAXIMO_CENTAVOS)),
+    ordem: opcional(z.enum(ORDENS, "use recentes, menor-preco ou maior-preco.")),
+    pagina: opcional(inteiro(1, 10_000)),
+    porPagina: opcional(inteiro(1, POR_PAGINA_MAXIMO)),
+  })
+  .refine((f) => f.precoMin === undefined || f.precoMax === undefined || f.precoMin <= f.precoMax, {
+    path: ["precoMin"],
+    message: "o preço mínimo não pode ser maior que o máximo.",
+  });
+
+/** Minúsculas e sem acento, para a busca não diferenciar "Óculos" de "oculos". */
+const normalizar = (texto: string) => texto.normalize("NFD").replace(/\p{Diacritic}/gu, "").toLowerCase().trim();
 
 /** Uma reserva vencida volta a contar como disponível. */
 export function statusAtual(peca: Pick<Peca, "status" | "reservadaAte">, agora: number) {
@@ -89,8 +131,42 @@ export function criarAppCatalogo(loja: Loja, config: ConfigCatalogo, agora: () =
     res.json({ freteCentavos: freteAtual(), reservaMinutos: config.reservaMinutos });
   });
 
-  app.get("/pecas", (_req, res) => {
-    res.json(loja.listarPecas().filter((p) => !p.oculta).map(pecaPublica));
+  /**
+   * Vitrine (Req. 007): só peças ativas (não ocultas, não vendidas; reservadas aparecem com o selo),
+   * com busca, filtros, ordenação e paginação. Responde { itens, total, pagina, porPagina }.
+   */
+  app.get("/pecas", (req, res) => {
+    const f = esquemaVitrine.parse(req.query);
+    const termo = f.busca ? normalizar(f.busca) : "";
+    const ordem = f.ordem ?? "recentes";
+    const pagina = f.pagina ?? 1;
+    const porPagina = f.porPagina ?? POR_PAGINA_PADRAO;
+
+    const filtradas = loja
+      .listarPecas()
+      .filter(
+        (p) =>
+          !p.oculta &&
+          statusAtual(p, agora()) !== "vendida" &&
+          (!termo || normalizar(`${p.titulo} ${p.marca ?? ""} ${p.descricao ?? ""}`).includes(termo)) &&
+          (!f.categoria || p.categoria === f.categoria) &&
+          (!f.tamanho || p.tamanho === f.tamanho) &&
+          (!f.condicao || p.condicao === f.condicao) &&
+          (f.precoMin === undefined || p.precoCentavos >= f.precoMin) &&
+          (f.precoMax === undefined || p.precoCentavos <= f.precoMax),
+      )
+      .sort((a, b) => {
+        const porPreco = a.precoCentavos - b.precoCentavos;
+        const diferenca =
+          ordem === "menor-preco" ? porPreco : ordem === "maior-preco" ? -porPreco : String(b.criadoEm).localeCompare(String(a.criadoEm));
+        // desempate pelo id: a ordem fica sempre igual e uma peça não pula de uma página para outra
+        return diferenca || a.id.localeCompare(b.id);
+      });
+
+    const inicio = (pagina - 1) * porPagina;
+    // só as peças da página viram o formato público (sem os campos internos da administração)
+    const itens = filtradas.slice(inicio, inicio + porPagina).map(pecaPublica);
+    res.json({ itens, total: filtradas.length, pagina, porPagina });
   });
 
   app.get("/pecas/:id", (req, res) => {

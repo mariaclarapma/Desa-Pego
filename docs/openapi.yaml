@@ -8,6 +8,7 @@ info:
     - usuárias do painel → `/api/auth/admin/*` (serviço de contas, porta 3002)
     - cadastro com CPF (Req. 001) → `/api/auth/cadastro` (serviço de contas, porta 3002)
     - anúncios e frete do painel → `/api/admin/*` e `/api/config` (catálogo, porta 3001)
+    - vitrine com busca, filtros e paginação (Req. 007) → `/api/pecas` (catálogo, porta 3001)
 
     Dinheiro sempre em **centavos inteiros**. Comissão e taxa do Pix em **pontos-base** (1000 = 10,00%).
     Rotas com login usam o token de acesso do serviço de contas (`Authorization: Bearer …`).
@@ -29,6 +30,8 @@ tags:
     description: cadastro (Req. 001). O CPF é recebido, mas nunca devolvido em nenhuma resposta.
   - name: interno
     description: chamadas do checkout e do webhook do Pix (Módulo 04), com X-API-Key
+  - name: vitrine
+    description: catálogo público, sem login (Req. 007)
 
 components:
   securitySchemes:
@@ -154,6 +157,37 @@ components:
         comissaoPontosBase: { type: integer }
         taxaPixPontosBase: { type: integer }
         precosSugeridos: { type: array, items: { $ref: "#/components/schemas/FaixaPreco" } }
+    Peca:
+      type: object
+      description: peça como a vitrine pública mostra (sem os campos internos da administração, como `oculta`)
+      required: [id, titulo, categoria, tamanho, condicao, precoCentavos, status, criadoEm]
+      properties:
+        id: { type: string }
+        titulo: { type: string }
+        marca: { type: string }
+        categoria: { type: string, enum: [feminino, masculino, calcados, bolsas, acessorios] }
+        tamanho: { type: string, examples: [M, único, "37"] }
+        condicao: { type: string, enum: [nova_com_etiqueta, otimo_estado, bom_estado, com_marcas_de_uso] }
+        precoCentavos: { type: integer }
+        fotoUrl: { type: string, format: uri }
+        fotoAlt: { type: string }
+        vendedor: { type: object, properties: { nomePublico: { type: string }, cidade: { type: string } } }
+        descricao: { type: string }
+        medidas: { type: object, additionalProperties: { type: number }, description: em centímetros }
+        status:
+          type: string
+          enum: [disponivel, reservada, vendida]
+          description: reserva vencida já volta como `disponivel`
+        reservadaAte: { type: [string, "null"], format: date-time }
+        criadoEm: { type: string, format: date-time }
+    PaginaVitrine:
+      type: object
+      required: [itens, total, pagina, porPagina]
+      properties:
+        itens: { type: array, items: { $ref: "#/components/schemas/Peca" }, description: só as peças desta página }
+        total: { type: integer, description: total de peças que atendem aos filtros, somando todas as páginas }
+        pagina: { type: integer, minimum: 1 }
+        porPagina: { type: integer, minimum: 1, maximum: 48 }
     Erro:
       type: object
       required: [erro]
@@ -534,6 +568,82 @@ paths:
         "403": { $ref: "#/components/responses/Proibido" }
         "404": { $ref: "#/components/responses/NaoEncontrado" }
 
+  /pecas:
+    get:
+      tags: [vitrine]
+      summary: Vitrine com busca, filtros, ordenação e paginação (catálogo). Sem login.
+      description: |
+        Lista só peças **ativas**: ficam de fora as vendidas e as ocultadas pela administração;
+        as reservadas aparecem com `status: reservada`.
+
+        Todos os parâmetros são opcionais e podem ser combinados. Parâmetro vazio (`?busca=`)
+        conta como não informado, como o formulário GET da vitrine envia. Parâmetro repetido
+        (`?categoria=a&categoria=b`) ou fora das regras → **400** com o campo em `campos`.
+
+        Preços em **centavos inteiros** (`precoMax=9500` = até R$ 95,00). Atenção: na URL da
+        página `/catalogo` do site os preços estão em reais; o site converte antes de chamar a API.
+      security: []
+      parameters:
+        - name: busca
+          in: query
+          description: procura no título, na marca e na descrição, sem diferenciar maiúsculas, minúsculas e acentos ("oculos" acha "Óculos")
+          schema: { type: string, maxLength: 100 }
+        - name: categoria
+          in: query
+          schema: { type: string, enum: [feminino, masculino, calcados, bolsas, acessorios] }
+        - name: tamanho
+          in: query
+          description: igual ao tamanho da peça (ex. `M`, `único`, `37`)
+          schema: { type: string, maxLength: 20 }
+        - name: condicao
+          in: query
+          schema: { type: string, enum: [nova_com_etiqueta, otimo_estado, bom_estado, com_marcas_de_uso] }
+        - name: precoMin
+          in: query
+          description: preço mínimo em centavos (o próprio valor entra). Não pode ser maior que `precoMax`.
+          schema: { type: integer, minimum: 0, maximum: 10000000 }
+        - name: precoMax
+          in: query
+          description: preço máximo em centavos (o próprio valor entra)
+          schema: { type: integer, minimum: 0, maximum: 10000000 }
+        - name: ordem
+          in: query
+          description: empate é desempatado pelo id, para a mesma peça não aparecer em duas páginas
+          schema: { type: string, enum: [recentes, menor-preco, maior-preco], default: recentes }
+        - name: pagina
+          in: query
+          description: começa em 1. Uma página além do fim devolve `itens` vazio, com o `total` certo.
+          schema: { type: integer, minimum: 1, maximum: 10000, default: 1 }
+        - name: porPagina
+          in: query
+          schema: { type: integer, minimum: 1, maximum: 48, default: 12 }
+      responses:
+        "200":
+          description: uma página da vitrine
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/PaginaVitrine" }
+              example:
+                itens:
+                  - id: demo-bolsa-palha
+                    titulo: Bolsa de palha com alça
+                    marca: feito à mão
+                    categoria: bolsas
+                    tamanho: único
+                    condicao: otimo_estado
+                    precoCentavos: 8990
+                    status: disponivel
+                    reservadaAte: null
+                    criadoEm: "2026-11-14T12:00:00.000Z"
+                total: 3
+                pagina: 1
+                porPagina: 1
+        "400":
+          description: parâmetro inválido
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Erro" }
+              example: { erro: confira os dados enviados., campos: { precoMin: o preço mínimo não pode ser maior que o máximo. } }
   /config:
     get:
       tags: [admin]

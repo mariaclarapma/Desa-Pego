@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { Peca } from "@/types/catalogo";
-import { filtrarPecas, liberarPeca, normalizar, reservarPeca, statusAtual } from "./catalogo";
+import { liberarPeca, listarPecas, reservarPeca, statusAtual } from "./catalogo";
 
 const base: Peca = {
   id: "p1",
@@ -37,30 +37,57 @@ describe("statusAtual", () => {
   });
 });
 
-describe("filtrarPecas", () => {
-  const pecas = [
-    peca({ id: "a", titulo: "Óculos de sol redondo", precoCentavos: 6990, criadoEm: "2026-11-08T12:00:00.000Z" }),
-    peca({ id: "b", titulo: "Bolsa de palha", categoria: "bolsas", precoCentavos: 8990, criadoEm: "2026-11-14T12:00:00.000Z" }),
-    peca({ id: "c", titulo: "Jaqueta de couro", categoria: "feminino", tamanho: "M", precoCentavos: 18990, criadoEm: "2026-11-18T12:00:00.000Z" }),
-    peca({ id: "d", titulo: "Vestido vendido", status: "vendida" }),
-  ];
-  const ids = (lista: Peca[]) => lista.map((p) => p.id);
+describe("listarPecas (a busca e os filtros acontecem no servidor)", () => {
+  afterEach(() => vi.unstubAllGlobals());
 
-  it("esconde peças vendidas e ordena das mais recentes para as mais antigas", () => {
-    expect(ids(filtrarPecas(pecas, {}, agora))).toEqual(["c", "b", "a"]);
+  const pagina = { itens: [peca({})], total: 1, pagina: 1, porPagina: 12 };
+  const urlPedida = async (filtros: Parameters<typeof listarPecas>[0]) => {
+    const fetchFalso = vi.fn().mockResolvedValue(new Response(JSON.stringify(pagina)));
+    vi.stubGlobal("fetch", fetchFalso);
+    await listarPecas(filtros);
+    return new URL(fetchFalso.mock.calls[0][0], "http://teste");
+  };
+
+  it("sem filtros, chama GET /pecas sem query e devolve a página como veio", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response(JSON.stringify(pagina))));
+    expect(await listarPecas()).toEqual(pagina);
+    expect((await urlPedida({})).href).toBe("http://teste/api/pecas");
   });
 
-  it("busca sem diferenciar maiúsculas e acentos", () => {
-    expect(normalizar("ÓCULOS")).toBe("oculos");
-    expect(ids(filtrarPecas(pecas, { busca: "oculos" }, agora))).toEqual(["a"]);
-    expect(ids(filtrarPecas(pecas, { busca: "JAQUETA" }, agora))).toEqual(["c"]);
+  it("manda cada filtro com o nome que a API espera (preços em centavos)", async () => {
+    const url = await urlPedida({
+      busca: "óculos",
+      categoria: "acessorios",
+      tamanho: "único",
+      condicao: "otimo_estado",
+      precoMinCentavos: 5000,
+      precoMaxCentavos: 9990,
+      ordem: "menor-preco",
+      pagina: 2,
+      porPagina: 24,
+    });
+    expect(url.pathname).toBe("/api/pecas");
+    expect(Object.fromEntries(url.searchParams)).toEqual({
+      busca: "óculos",
+      categoria: "acessorios",
+      tamanho: "único",
+      condicao: "otimo_estado",
+      precoMin: "5000",
+      precoMax: "9990",
+      ordem: "menor-preco",
+      pagina: "2",
+      porPagina: "24",
+    });
   });
 
-  it("combina categoria, tamanho, preço máximo e ordenação", () => {
-    expect(ids(filtrarPecas(pecas, { categoria: "bolsas" }, agora))).toEqual(["b"]);
-    expect(ids(filtrarPecas(pecas, { tamanho: "M" }, agora))).toEqual(["c"]);
-    expect(ids(filtrarPecas(pecas, { precoMaxCentavos: 9000, ordem: "maior-preco" }, agora))).toEqual(["b", "a"]);
-    expect(ids(filtrarPecas(pecas, { ordem: "menor-preco" }, agora))).toEqual(["a", "b", "c"]);
+  it("não manda filtros vazios", async () => {
+    const url = await urlPedida({ busca: "", categoria: undefined, ordem: "recentes" });
+    expect(Object.fromEntries(url.searchParams)).toEqual({ ordem: "recentes" });
+  });
+
+  it("erro da API (ex.: 400) chega como ApiErro, para a página tratar", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response(JSON.stringify({ erro: "confira os dados enviados." }), { status: 400 })));
+    await expect(listarPecas({ busca: "x" })).rejects.toMatchObject({ status: 400, detalhe: "confira os dados enviados." });
   });
 });
 
