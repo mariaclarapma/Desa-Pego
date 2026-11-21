@@ -71,9 +71,15 @@ function traduzir(erro: unknown, modo: Modo): ContaErro {
     if (erro.status === 401) {
       return new ContaErro(modo === "sessao" || modo === "conta" ? "sua sessão expirou. entre de novo." : "e-mail ou senha incorretos.", 401);
     }
-    if (erro.status === 409) return new ContaErro("já existe uma conta com esse e-mail. tente entrar.", 409);
+    // e-mail ou CPF já cadastrado: o backend diz qual campo, sem revelar dados da outra conta
+    if (erro.status === 409) {
+      if (campos?.cpf) return new ContaErro(campos.cpf, 409, { cpf: campos.cpf });
+      return new ContaErro("já existe uma conta com esse e-mail. tente entrar.", 409, campos?.email ? { email: campos.email } : undefined);
+    }
     if (erro.status === 429) return new ContaErro("muitas tentativas seguidas. espere alguns minutos e tente de novo.", 429);
-    if (erro.status === 400 || erro.status === 422) return new ContaErro(detalhe ?? "confira os dados do formulário e tente de novo.", erro.status);
+    if (erro.status === 400 || erro.status === 422) {
+      return new ContaErro(detalhe ?? "confira os dados do formulário e tente de novo.", erro.status, campos);
+    }
     if (erro.status >= 500) return new ContaErro("o serviço de contas está fora do ar agora. tente de novo em instantes.", erro.status);
   }
   return new ContaErro(
@@ -93,8 +99,9 @@ async function chamar<T>(modo: Modo, fn: () => Promise<T>): Promise<T> {
 
 export const entrar = (email: string, senha: string) => chamar("entrar", () => postar<Sessao>("/auth/login", { email, senha }));
 
-export const cadastrar = (nome: string, email: string, senha: string) =>
-  chamar("cadastro", () => postar<Sessao>("/auth/cadastro", { nome, email, senha }));
+/** O CPF vai só com os dígitos; o backend valida de novo e nunca o devolve. */
+export const cadastrar = (nome: string, email: string, cpf: string, senha: string) =>
+  chamar("cadastro", () => postar<Sessao>("/auth/cadastro", { nome, email, cpf: cpf.replace(/\D/g, ""), senha }));
 
 /** Recupera a sessão pelo cookie httpOnly (ao abrir a página ou quando o JWT vence). */
 export const renovarSessao = () =>

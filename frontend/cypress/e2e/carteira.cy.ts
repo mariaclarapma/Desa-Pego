@@ -1,9 +1,9 @@
+import { gerarCpf } from "../support/cpf";
 /**
  * Req. 014: carteira da vendedora. Venda paga fica pendente, a entrega libera o saldo, o saque
  * nunca passa do disponível e o Pix manual da administração debita o saldo.
  * O pedido entra pela rota interna do Módulo 05 (API key), como o checkout do Módulo 04 fará.
  */
-export {};
 
 const SENHA = "garimpo123";
 
@@ -11,7 +11,7 @@ type Conta = { id: string; email: string; token: string };
 
 function criarConta(nome: string): Cypress.Chainable<Conta> {
   const email = `${nome.split(" ")[0].toLowerCase()}-${Date.now()}-${Cypress._.random(1e6)}@exemplo.com`;
-  return cy.request("POST", "/api/auth/cadastro", { nome, email, senha: SENHA }).then(({ body }) => {
+  return cy.request("POST", "/api/auth/cadastro", { nome, email, cpf: gerarCpf(), senha: SENHA }).then(({ body }) => {
     cy.clearCookies();
     return cy.wrap({ id: body.usuario.id as string, email, token: body.accessToken as string });
   });

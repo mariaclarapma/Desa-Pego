@@ -1,5 +1,6 @@
 /// <reference types="cypress" />
 import type { Result } from "axe-core";
+import { gerarCpf } from "./cpf";
 
 declare global {
   // eslint-disable-next-line @typescript-eslint/no-namespace
@@ -7,7 +8,7 @@ declare global {
     interface Chainable {
       /** Auditoria WCAG 2.1 A e AA com o axe na página atual (falha se houver violação). */
       checarAcessibilidade(contexto?: string): Chainable<void>;
-      /** Cria uma conta nova pela tela /cadastro e devolve o e-mail usado. */
+      /** Cria uma conta nova pela tela /cadastro (com um CPF válido e único) e devolve o e-mail usado. */
       cadastrar(senha?: string): Chainable<string>;
       /** Primeira peça disponível na vitrine (lida da API). */
       pecaDisponivel(): Chainable<{ id: string; titulo: string; precoCentavos: number }>;
@@ -35,6 +36,7 @@ Cypress.Commands.add("cadastrar", (senha = "garimpo123") => {
   cy.visit("/cadastro");
   cy.findCampo("nome completo").type("Teste Cypress");
   cy.findCampo("e-mail").type(email);
+  cy.findCampo("CPF").type(gerarCpf());
   cy.findCampo("senha").type(senha);
   cy.findCampo("confirmar senha").type(senha);
   cy.contains("button[type=submit]", /criar minha conta/i).click();

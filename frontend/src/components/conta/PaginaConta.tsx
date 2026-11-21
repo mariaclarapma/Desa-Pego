@@ -13,6 +13,7 @@ import { ROUTES } from "@/lib/routes";
 import { useSessao } from "@/lib/sessao";
 import {
   CAMPOS,
+  mascararCpf,
   SENHA_MINIMO,
   validarCampo,
   validarConta,
@@ -41,7 +42,7 @@ const TEXTOS: Record<ModoConta, { titulo: [string, string]; apoio: string; h1: s
   },
 };
 
-const VAZIO: DadosConta = { nome: "", email: "", senha: "", confirmarSenha: "" };
+const VAZIO: DadosConta = { nome: "", email: "", cpf: "", senha: "", confirmarSenha: "" };
 
 /** Login e cadastro na mesma tela (Req. 001), alternando sem recarregar a página. */
 export function PaginaConta({ modoInicial }: { modoInicial: ModoConta }) {
@@ -73,7 +74,8 @@ export function PaginaConta({ modoInicial }: { modoInicial: ModoConta }) {
     if (focarTitulo) requestAnimationFrame(() => tituloRef.current?.focus());
   }
 
-  function mudar(campo: keyof DadosConta, valor: string) {
+  function mudar(campo: keyof DadosConta, bruto: string) {
+    const valor = campo === "cpf" ? mascararCpf(bruto) : bruto;
     const novos = { ...dados, [campo]: valor };
     setDados(novos);
     // depois que o campo foi visitado, revalida enquanto a pessoa digita
@@ -105,11 +107,17 @@ export function PaginaConta({ modoInicial }: { modoInicial: ModoConta }) {
       const sessao =
         modo === "entrar"
           ? await entrar(dados.email.trim(), dados.senha)
-          : await cadastrar(dados.nome.trim(), dados.email.trim(), dados.senha);
+          : await cadastrar(dados.nome.trim(), dados.email.trim(), dados.cpf, dados.senha);
       definirSessao(sessao);
       router.push(ROUTES.conta);
     } catch (falha) {
       setErroGeral(falha instanceof ContaErro ? falha.message : "algo deu errado. tente de novo.");
+      // erro de um campo vindo do backend (ex.: CPF já cadastrado): mostra também ao lado do campo
+      const doBackend = falha instanceof ContaErro ? falha.campos : undefined;
+      const camposComErro = CAMPOS[modo].filter((c) => doBackend?.[c]);
+      if (camposComErro.length) {
+        setErros((e) => ({ ...e, ...Object.fromEntries(camposComErro.map((c) => [c, doBackend![c]])) }));
+      }
       setEnviando(false);
       requestAnimationFrame(() => alertaRef.current?.focus());
     }
@@ -215,6 +223,18 @@ export function PaginaConta({ modoInicial }: { modoInicial: ModoConta }) {
             <div className="mt-6 space-y-5">
               {modo === "cadastro" ? <CampoConta {...campo("nome")} rotulo="nome completo" autoComplete="name" /> : null}
               <CampoConta {...campo("email")} rotulo="e-mail" type="email" inputMode="email" autoComplete="email" spellCheck={false} />
+              {modo === "cadastro" ? (
+                <CampoConta
+                  {...campo("cpf")}
+                  rotulo="CPF"
+                  inputMode="numeric"
+                  autoComplete="off"
+                  spellCheck={false}
+                  maxLength={14}
+                  placeholder="000.000.000-00"
+                  dica="só os números; a pontuação entra sozinha. guardamos seu CPF protegido e ele não aparece no seu perfil."
+                />
+              ) : null}
               <CampoConta
                 {...campo("senha")}
                 rotulo="senha"

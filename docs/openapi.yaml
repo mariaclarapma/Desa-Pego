@@ -6,6 +6,7 @@ info:
     Endpoints novos do Módulo 05 (Req. 013, 014 e 015). Pelo site, tudo fica sob `/api`:
     - pedidos, carteira e painel → `/api/gestao/*` (serviço de pedidos, porta 3003)
     - usuárias do painel → `/api/auth/admin/*` (serviço de contas, porta 3002)
+    - cadastro com CPF (Req. 001) → `/api/auth/cadastro` (serviço de contas, porta 3002)
     - anúncios e frete do painel → `/api/admin/*` e `/api/config` (catálogo, porta 3001)
 
     Dinheiro sempre em **centavos inteiros**. Comissão e taxa do Pix em **pontos-base** (1000 = 10,00%).
@@ -24,6 +25,8 @@ tags:
     description: saldo, extrato e saques da vendedora (Req. 014)
   - name: admin
     description: painel da administradora master (Req. 014)
+  - name: contas
+    description: cadastro (Req. 001). O CPF é recebido, mas nunca devolvido em nenhuma resposta.
   - name: interno
     description: chamadas do checkout e do webhook do Pix (Módulo 04), com X-API-Key
 
@@ -419,6 +422,46 @@ paths:
         "404": { $ref: "#/components/responses/NaoEncontrado" }
         "409": { description: repasse já pago }
         "422": { $ref: "#/components/responses/SaldoInsuficiente" }
+
+  /auth/cadastro:
+    post:
+      tags: [contas]
+      summary: Cria a conta e já abre a sessão (refresh token em cookie httpOnly)
+      description: |
+        O CPF é validado (11 dígitos e dígitos verificadores) e guardado só cifrado (AES-256-GCM),
+        com um HMAC-SHA256 para a restrição UNIQUE. Ele não volta em nenhuma resposta, nem no token.
+        E-mail é conferido antes do CPF. Limite de 10 cadastros por hora por IP.
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [nome, email, cpf, senha]
+              properties:
+                nome: { type: string, maxLength: 120, description: nome e sobrenome, só letras }
+                email: { type: string, format: email, maxLength: 254 }
+                cpf: { type: string, description: "11 dígitos, com ou sem pontuação", examples: ["529.982.247-25", "52998224725"] }
+                senha: { type: string, minLength: 8, maxLength: 128, description: com pelo menos uma letra e um número }
+      responses:
+        "201":
+          description: conta criada
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  usuario: { type: object, properties: { id: { type: string, format: uuid }, nome: { type: string }, email: { type: string }, perfil: { type: string } } }
+                  accessToken: { type: string }
+                  expiraEm: { type: string, format: date-time }
+        "400":
+          description: "dados inválidos; `campos.cpf`: \"informe seu CPF.\", \"o CPF precisa ter 11 dígitos.\" ou \"CPF inválido. confira os números.\""
+          content: { application/json: { schema: { $ref: "#/components/schemas/Erro" } } }
+        "409":
+          description: "e-mail (`campos.email`) ou CPF (`campos.cpf`) já cadastrado; a resposta não repete o CPF nem diz de quem é a conta"
+          content: { application/json: { schema: { $ref: "#/components/schemas/Erro" } } }
+        "429": { description: muitos cadastros do mesmo IP, content: { application/json: { schema: { $ref: "#/components/schemas/Erro" } } } }
 
   /auth/admin/usuarios:
     get:

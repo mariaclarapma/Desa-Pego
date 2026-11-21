@@ -1,3 +1,5 @@
+import { gerarCpf } from "../support/cpf";
+
 /** Autenticação: cadastro, login, logout, erros e proteção da rota privada /conta. */
 describe("autenticação", () => {
   it("cadastro abre a sessão e leva para /conta", () => {
@@ -51,11 +53,39 @@ describe("autenticação", () => {
       cy.visit("/cadastro");
       cy.findCampo("nome completo").type("Outra Pessoa");
       cy.findCampo("e-mail").type(email);
+      cy.findCampo("CPF").type(gerarCpf());
       cy.findCampo("senha").type("garimpo123");
       cy.findCampo("confirmar senha").type("garimpo123");
       cy.contains("button[type=submit]", /criar minha conta/i).click();
       cy.get("[role=alert]").should("contain.text", "já existe uma conta");
     });
+  });
+
+  it("CPF: máscara, validação no formulário e CPF repetido recusado sem criar outra conta (Req. 001)", () => {
+    const cpf = gerarCpf();
+    const email = `cpf-${Date.now()}-${Cypress._.random(1e6)}@exemplo.com`;
+    cy.request("POST", "/api/auth/cadastro", { nome: "Dona Do Cpf", email, cpf, senha: "garimpo123" }).then(({ body }) => {
+      // a resposta nunca devolve o CPF
+      expect(JSON.stringify(body)).not.to.contain(cpf);
+    });
+    cy.clearCookies();
+
+    cy.visit("/cadastro");
+    cy.findCampo("CPF").type("5299822472").should("have.value", "529.982.247-2");
+    cy.findCampo("nome completo").type("Outra Pessoa");
+    cy.findCampo("e-mail").type(`outra-${email}`);
+    cy.findCampo("senha").type("garimpo123");
+    cy.findCampo("confirmar senha").type("garimpo123");
+    cy.contains("button[type=submit]", /criar minha conta/i).click();
+    cy.findCampo("CPF").should("have.attr", "aria-invalid", "true").and("have.focus");
+    cy.contains("o CPF precisa ter 11 dígitos");
+
+    // o mesmo CPF da primeira conta (digitado sem pontuação): o backend recusa
+    cy.findCampo("CPF").clear().type(cpf).should("have.value", cpf.replace(/(\d{3})(\d{3})(\d{3})(\d{2})/, "$1.$2.$3-$4"));
+    cy.contains("button[type=submit]", /criar minha conta/i).click();
+    cy.get("[role=alert]").should("contain.text", "CPF já está vinculado").and("not.contain.text", cpf);
+    cy.location("pathname").should("eq", "/cadastro");
+    cy.checarAcessibilidade();
   });
 
   it("telas de login e cadastro são acessíveis (WCAG 2.1 AA)", () => {

@@ -17,8 +17,8 @@ export async function garantirAdminMaster(banco: Banco, env: NodeJS.ProcessEnv):
   const senha = env.ADMIN_MASTER_PASSWORD;
   if (!email || !senha) return "sem-config";
 
-  // mesmas regras do cadastro: e-mail válido e senha forte
-  const dados = esquemaCadastro.safeParse({ nome: env.ADMIN_MASTER_NOME ?? "Ludy Administração", email, senha });
+  // mesmas regras do cadastro: e-mail válido e senha forte (a conta da administração não tem CPF)
+  const dados = esquemaCadastro.omit({ cpf: true }).safeParse({ nome: env.ADMIN_MASTER_NOME ?? "Ludy Administração", email, senha });
   if (!dados.success) {
     throw new Error(`ADMIN_MASTER_EMAIL ou ADMIN_MASTER_PASSWORD inválidos: ${dados.error.issues.map((i) => i.message).join(" ")}`);
   }
