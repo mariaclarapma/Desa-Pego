@@ -7,6 +7,8 @@ import { CATEGORIAS, CONDICOES, type CategoriaSlug } from "../../comum/categoria
 import { dividirValor, PONTOS_BASE_100 } from "../../comum/dinheiro.js";
 import { cors, exigirApiKey, limiteRequisicoes } from "../../comum/seguranca.js";
 import type { BancoPedidos, Pedido } from "./banco.js";
+import { montarDashboard, PERIODOS } from "./dashboard.js";
+import { nomeVendedoraDemo, pedidosDemonstracao } from "./dashboard-demo.js";
 import { conferirTransicao, STATUS, type Ator, type StatusPedido } from "./estados.js";
 
 export interface ConfigPedidos {
@@ -35,7 +37,18 @@ const esquemaNovoPedido = z
   .object({
     compradoraId: idTexto,
     vendedoraId: idTexto,
-    itens: z.array(z.object({ id: idTexto, titulo: z.string().trim().min(1).max(160), precoCentavos: centavos.positive() })).min(1).max(20),
+    itens: z
+      .array(
+        z.object({
+          id: idTexto,
+          titulo: z.string().trim().min(1).max(160),
+          precoCentavos: centavos.positive(),
+          // opcional: o checkout ainda não manda; quando mandar, o dashboard agrupa por categoria
+          categoria: z.enum(CATEGORIAS.map((c) => c.slug) as [CategoriaSlug, ...CategoriaSlug[]]).optional(),
+        }),
+      )
+      .min(1)
+      .max(20),
     freteCentavos: centavos,
     endereco: z.record(z.string(), z.string().max(160)),
   })
@@ -247,6 +260,19 @@ export function criarAppPedidos(banco: BancoPedidos, config: ConfigPedidos, agor
 
   admin.get("/resumo", async (_req, res) => {
     res.json({ ...(await banco.resumo()), comissaoPontosBase: await banco.comissaoAtual(), taxaPixPontosBase: await banco.taxaPixAtual() });
+  });
+
+  /** Dashboard de vendas: totais, série no tempo, para onde vão as peças, categorias e vendedoras. */
+  admin.get("/dashboard", async (req, res) => {
+    const { periodo, demo } = z
+      .object({ periodo: z.enum(PERIODOS).default("12m"), demo: z.enum(["0", "1"]).default("0") })
+      .parse(req.query);
+    if (demo === "1") {
+      // dados FICTÍCIOS, gerados na hora e nunca gravados: a resposta vem marcada
+      const d = montarDashboard(pedidosDemonstracao(agora()), periodo, agora());
+      return res.json({ ...d, demonstracao: true, vendedoras: d.vendedoras.map((v) => ({ ...v, nome: nomeVendedoraDemo(v.vendedoraId) })) });
+    }
+    res.json(montarDashboard(await banco.todosPedidos(), periodo, agora()));
   });
 
   admin.get("/configuracao", async (_req, res) => {
