@@ -188,6 +188,9 @@ export default function ContaPage() {
           <ButtonLink href={ROUTES.minhasVendas} variant="nevoa" size="lg">
             minhas vendas
           </ButtonLink>
+          <ButtonLink href={ROUTES.carteira} variant="nevoa" size="lg">
+            minha carteira
+          </ButtonLink>
           <ButtonLink href={catalogoUrl()} variant="nevoa" size="lg">
             ir pra vitrine
           </ButtonLink>
