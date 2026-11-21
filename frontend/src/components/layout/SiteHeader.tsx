@@ -21,6 +21,7 @@ const AVISOS = [
 const LINKS_CONTA = [
   { href: ROUTES.entrar, label: "entrar ou criar conta" },
   { href: ROUTES.minhasCompras, label: "minhas compras" },
+  { href: ROUTES.minhasVendas, label: "minhas vendas" },
   { href: ROUTES.meusAnuncios, label: "meus anúncios" },
   { href: ROUTES.carteira, label: "minha carteira" },
   { href: ROUTES.comoFunciona, label: "como funciona" },

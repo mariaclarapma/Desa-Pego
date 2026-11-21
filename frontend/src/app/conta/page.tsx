@@ -182,7 +182,13 @@ export default function ContaPage() {
         </section>
 
         <div className="mt-10 flex flex-col gap-4 sm:flex-row">
-          <ButtonLink href={catalogoUrl()} variant="violeta" size="lg">
+          <ButtonLink href={ROUTES.minhasCompras} variant="violeta" size="lg">
+            minhas compras
+          </ButtonLink>
+          <ButtonLink href={ROUTES.minhasVendas} variant="nevoa" size="lg">
+            minhas vendas
+          </ButtonLink>
+          <ButtonLink href={catalogoUrl()} variant="nevoa" size="lg">
             ir pra vitrine
           </ButtonLink>
           {/* só esconde o atalho: quem barra o acesso ao painel é o backend (403) */}
