@@ -3,7 +3,6 @@ import { beforeEach, describe, expect, it } from "vitest";
 import { criarApp } from "./app.js";
 import { usarBancoDeTeste } from "./banco-teste.js";
 import type { Config } from "./config.js";
-import { chavesCpfTemporarias } from "./cpf-cripto.js";
 
 const config: Config = {
   porta: 0,
@@ -15,10 +14,9 @@ const config: Config = {
   cookieSeguro: false,
   trustProxy: "loopback",
   origens: ["http://localhost:3000"],
-  cpf: chavesCpfTemporarias(),
 };
 
-const ANA = { nome: "Ana Souza", email: "Ana@Exemplo.com", cpf: "529.982.247-25", senha: "garimpo123" };
+const ANA = { nome: "Ana Souza", email: "Ana@Exemplo.com", senha: "garimpo123" };
 
 const lerBanco = usarBancoDeTeste();
 let relogio: number;
@@ -61,7 +59,6 @@ describe("POST /auth/cadastro", () => {
     expect(res.body.campos).toEqual({
       nome: "informe nome e sobrenome.",
       email: expect.stringContaining("formato"),
-      cpf: "informe seu CPF.",
       senha: expect.stringContaining("8 caracteres"),
     });
     expect(await lerBanco().usuarioPorEmail("ana@")).toBeUndefined();

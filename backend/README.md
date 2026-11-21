@@ -37,7 +37,7 @@ como defesa extra.
 
 | Método e rota | O que faz |
 | --- | --- |
-| `POST /auth/cadastro` | cria a conta (`nome`, `email`, `cpf`, `senha`) e já abre a sessão · 201, 400, 409, 429 |
+| `POST /auth/cadastro` | cria a conta (`nome`, `email`, `senha`) e já abre a sessão · 201, 400, 409, 429 |
 | `POST /auth/login` | entra com `email` e `senha` · 200, 400, 401, 429 |
 | `POST /auth/refresh` | troca o refresh token do cookie por um novo e devolve um novo token de acesso · 200, 401 |
 | `POST /auth/logout` | encerra a sessão e apaga o cookie · 204 |
@@ -53,7 +53,7 @@ Login, cadastro, refresh, `PATCH /auth/me` e `PUT /auth/me/senha` respondem
 
 | Operação | Rota | Regras |
 | --- | --- | --- |
-| **Create** | `POST /auth/cadastro` | nome e sobrenome, e-mail válido e único, CPF válido e único, senha com 8+ caracteres, letra e número; hash Argon2id |
+| **Create** | `POST /auth/cadastro` | nome e sobrenome, e-mail válido e único, senha com 8+ caracteres, letra e número; hash Argon2id |
 | **Read** | `GET /auth/me` | rota privada: só devolve a conta dona do token (sem senha nem hash) |
 | **Update** | `PATCH /auth/me` | o nome muda sem senha; o e-mail pede a senha atual e não pode ser de outra conta; devolve um token de acesso novo |
 | **Update** | `PUT /auth/me/senha` | confere a senha atual; a nova precisa ser forte e diferente da atual; revoga todas as sessões e abre uma nova neste aparelho |
@@ -62,7 +62,7 @@ Login, cadastro, refresh, `PATCH /auth/me` e `PUT /auth/me/senha` respondem
 Todas as rotas `/auth/me*` usam o middleware `autenticado` (token de acesso de uma conta que ainda existe).
 Senha atual errada responde **403** com `{ erro, campos }`; 5 erros seguidos bloqueiam por 15 minutos (**429**).
 
-Testes: `contas/src/app.test.ts` (cadastro, login e sessão), `contas/src/crud.test.ts` (as quatro operações) e `contas/src/cpf.test.ts` (CPF: validação, duplicidade, corrida e vazamento).
+Testes: `contas/src/app.test.ts` (cadastro, login e sessão) e `contas/src/crud.test.ts` (as quatro operações).
 
 ### Segurança (documento de arquitetura, §6)
 
@@ -81,15 +81,7 @@ Testes: `contas/src/app.test.ts` (cadastro, login e sessão), `contas/src/crud.t
 ### Limitações desta versão de desenvolvimento
 
 - Limite de tentativas em memória no lugar do Redis (vale para uma instância só).
-- **CPF** (Req. 001): validado pelos dígitos verificadores e nunca guardado em texto puro. A coluna
-  `cpf_hash` (HMAC-SHA256 com `CPF_HASH_CHAVE`) tem índice `UNIQUE`, então o próprio banco recusa CPF
-  repetido, mesmo com dois cadastros ao mesmo tempo. A coluna `cpf_cifrado` (AES-256-GCM com
-  `CPF_CRIPTO_CHAVE`, id da conta como AAD) guarda o CPF. Nenhuma resposta, token ou log inclui o CPF.
-  As duas chaves são obrigatórias com `DATABASE_URL` e **não podem ser trocadas** depois que houver
-  contas: os CPFs ficariam ilegíveis e a unicidade deixaria de funcionar (troca exige migração).
-  Geração, backup e recuperação das chaves: [docs/CPF.md](../docs/CPF.md).
-  Contas antigas e a administradora master ficam com CPF nulo.
-- Ainda não tem recuperação de senha, login com Google nem 2FA (previstos na arquitetura).
+- Ainda não tem CPF, recuperação de senha, login com Google nem 2FA (previstos na arquitetura).
 - O token de acesso é um JWT sem estado: depois de trocar a senha, um token de acesso já emitido para outro
   aparelho continua válido até vencer (no máximo 15 minutos), mas a sessão desse aparelho não renova.
   Depois de excluir a conta, nenhum token funciona mais (a conta não existe).

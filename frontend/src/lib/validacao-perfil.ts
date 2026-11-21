@@ -19,7 +19,7 @@ export interface DadosSenha {
 
 export type Erros<T> = Partial<Record<keyof T, string>>;
 
-const comoCadastro = (dados: Partial<DadosConta>): DadosConta => ({ nome: "", email: "", cpf: "", senha: "", confirmarSenha: "", ...dados });
+const comoCadastro = (dados: Partial<DadosConta>): DadosConta => ({ nome: "", email: "", senha: "", confirmarSenha: "", ...dados });
 
 export const mesmoEmail = (a: string, b: string) => a.trim().toLowerCase() === b.trim().toLowerCase();
 

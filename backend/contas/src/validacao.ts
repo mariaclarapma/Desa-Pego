@@ -1,5 +1,4 @@
 import { z } from "zod";
-import { ERRO_CPF_VAZIO, validarCpf } from "../../comum/cpf.js";
 
 // Mesmas regras do formulário (frontend/src/lib/validacao-conta.ts): o backend valida de novo,
 // porque o frontend nunca é a barreira de segurança.
@@ -25,18 +24,7 @@ const senhaNova = z
 
 const senhaAtual = z.string({ error: "informe sua senha atual." }).min(1, "informe sua senha atual.").max(128);
 
-/** CPF (Req. 001): 11 dígitos, com ou sem pontuação, e dígitos verificadores certos. Sai só com os dígitos. */
-const cpf = z.string({ error: ERRO_CPF_VAZIO }).transform((valor, ctx) => {
-  const r = validarCpf(valor);
-  if (!r.ok) {
-    // a mensagem não repete o valor digitado
-    ctx.addIssue({ code: "custom", message: r.erro });
-    return z.NEVER;
-  }
-  return r.cpf;
-});
-
-export const esquemaCadastro = z.object({ nome, email, cpf, senha: senhaNova });
+export const esquemaCadastro = z.object({ nome, email, senha: senhaNova });
 
 export const esquemaLogin = z.object({
   email,

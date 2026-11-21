@@ -4,7 +4,6 @@ import { beforeEach, describe, expect, it } from "vitest";
 import { criarApp } from "./app.js";
 import { usarBancoDeTeste } from "./banco-teste.js";
 import type { Config } from "./config.js";
-import { chavesCpfTemporarias } from "./cpf-cripto.js";
 import { garantirAdminMaster } from "./seed.js";
 
 /** Módulo 05: administradora master (seed), bloqueio de contas e acesso ao painel. */
@@ -18,13 +17,12 @@ const config: Config = {
   cookieSeguro: false,
   trustProxy: "loopback",
   origens: ["http://localhost:3000"],
-  cpf: chavesCpfTemporarias(),
 };
 
 // senhas geradas a cada execução: nenhuma credencial (nem de teste) fica escrita no código
 const senhaDeTeste = () => `Teste${randomBytes(6).toString("hex")}9`;
 const MASTER = { ADMIN_MASTER_EMAIL: "lucy@desapego.test", ADMIN_MASTER_PASSWORD: senhaDeTeste() };
-const ANA = { nome: "Ana Souza", email: "ana@exemplo.com", cpf: "529.982.247-25", senha: "garimpo123" };
+const ANA = { nome: "Ana Souza", email: "ana@exemplo.com", senha: "garimpo123" };
 
 const lerBanco = usarBancoDeTeste();
 let app: ReturnType<typeof criarApp>;

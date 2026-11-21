@@ -87,9 +87,6 @@ jobs:
         run: |
           export JWT_SECRET="$(openssl rand -base64 48)"
           export API_KEYS="$(openssl rand -hex 24)"
-          # chaves do CPF (Req. 001): obrigatórias com banco persistente
-          export CPF_CRIPTO_CHAVE="$(openssl rand -base64 32)"
-          export CPF_HASH_CHAVE="$(openssl rand -base64 32)"
           export CORS_ORIGENS="http://localhost:4000"
           npm start > start.log 2>&1 &
           for i in $(seq 1 60); do
