@@ -6,7 +6,6 @@ import { z } from "zod";
 import { emailDuplicado, type Banco, type UsuarioRegistro } from "./banco.js";
 import { cors } from "../../comum/seguranca.js";
 import type { Config } from "./config.js";
-import { cifrarCpf, hashCpf } from "./cpf-cripto.js";
 import { LimiteTentativas } from "./limite.js";
 import { conferirSenha, gerarHashSenha } from "./senhas.js";
 import { gerarTokenAcesso, gerarTokenRefresh, hashToken, lerTokenAcesso } from "./tokens.js";
@@ -14,14 +13,9 @@ import { errosPorCampo, esquemaCadastro, esquemaExclusao, esquemaLogin, esquemaP
 
 const MINUTO = 60_000;
 const ERRO_CREDENCIAIS = "e-mail ou senha incorretos.";
-const ERRO_EMAIL_EM_USO = "já existe uma conta com esse e-mail.";
-/** Não repete o CPF nem diz de quem é a conta. */
-const ERRO_CPF_EM_USO = "este CPF já está vinculado a uma conta. se a conta é sua, entre com seu e-mail.";
 
-/**
- * Dados públicos do usuário. Lista fechada de campos: a senha, o CPF e os hashes nunca saem do serviço.
- * O perfil serve para o site mostrar o painel.
- */
+/** Dados públicos do usuário: a senha (nem o hash) nunca sai do serviço. */
+/** Dados públicos do usuário: a senha (nem o hash) nunca sai do serviço. O perfil serve para o site mostrar o painel. */
 const publico = (u: UsuarioRegistro) => ({ id: u.id, nome: u.nome, email: u.email, perfil: u.perfil });
 const ERRO_BLOQUEADA = "esta conta está bloqueada. fale com a administração do desaPego.";
 
@@ -83,31 +77,23 @@ export function criarApp(banco: Banco, config: Config, agora: () => number = Dat
     if (!dados.success) return res.status(400).json({ erro: "confira os dados do formulário.", campos: errosPorCampo(dados.error) });
     cadastros.registrarFalha(`ip:${ip}`); // conta cada cadastro feito pelo IP
 
-    const { nome, email, cpf, senha } = dados.data;
-    const cpfHash = hashCpf(cpf, config.cpf);
-    const emailEmUso = () => res.status(409).json({ erro: ERRO_EMAIL_EM_USO, campos: { email: ERRO_EMAIL_EM_USO } });
-    const cpfEmUso = () => res.status(409).json({ erro: ERRO_CPF_EM_USO, campos: { cpf: ERRO_CPF_EM_USO } });
-    if (await banco.usuarioPorEmail(email)) return emailEmUso();
-    if (await banco.cpfEmUso(cpfHash)) return cpfEmUso();
+    const { nome, email, senha } = dados.data;
+    if (await banco.usuarioPorEmail(email)) return res.status(409).json({ erro: "já existe uma conta com esse e-mail." });
 
-    const id = randomUUID();
     const usuario: UsuarioRegistro = {
-      id,
+      id: randomUUID(),
       nome,
       email,
       senha_hash: await gerarHashSenha(senha),
       perfil: "USUARIO",
       bloqueada: false,
       criado_em: new Date(agora()).toISOString(),
-      cpf_hash: cpfHash,
-      cpf_cifrado: cifrarCpf(cpf, id, config.cpf),
     };
     try {
       await banco.criarUsuario(usuario);
     } catch (erro) {
-      // corrida entre dois cadastros com o mesmo e-mail ou CPF: a restrição UNIQUE do banco decide.
-      // O erro do banco não vai para o log nem para a resposta.
-      if (emailDuplicado(erro)) return (await banco.cpfEmUso(cpfHash)) ? cpfEmUso() : emailEmUso();
+      // corrida entre dois cadastros com o mesmo e-mail: a restrição UNIQUE do banco decide
+      if (emailDuplicado(erro)) return res.status(409).json({ erro: "já existe uma conta com esse e-mail." });
       throw erro;
     }
     res.status(201).json(await abrirSessao(res, usuario));
