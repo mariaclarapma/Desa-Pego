@@ -104,6 +104,7 @@ components:
         id: { type: string }
         titulo: { type: string }
         precoCentavos: { type: integer, minimum: 1 }
+        categoria: { type: string, enum: [feminino, masculino, calcados, bolsas, acessorios], description: "opcional; usada no painel de vendas" }
     Pedido:
       type: object
       properties:
@@ -355,6 +356,43 @@ paths:
                   repasses: { type: object, additionalProperties: { type: object, properties: { quantidade: { type: integer }, totalCentavos: { type: integer } } } }
                   comissaoPontosBase: { type: integer }
                   taxaPixPontosBase: { type: integer }
+        "401": { $ref: "#/components/responses/SemLogin" }
+        "403": { $ref: "#/components/responses/Proibido" }
+  /gestao/admin/dashboard:
+    get:
+      tags: [admin]
+      summary: Painel de vendas (só pedidos pagos, enviados ou entregues). Com demo=1, números FICTÍCIOS marcados com demonstracao=true, nunca gravados.
+      security: [{ token: [] }]
+      parameters:
+        - { name: periodo, in: query, schema: { type: string, enum: ["30d", "90d", "12m", tudo], default: "12m" }, description: "30d agrupa por dia, 90d por semana, 12m e tudo por mês (tudo: até 24 meses)" }
+        - { name: demo, in: query, schema: { type: string, enum: ["0", "1"], default: "0" } }
+      responses:
+        "200":
+          description: dashboard
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  demonstracao: { type: boolean }
+                  periodo: { type: string }
+                  granularidade: { type: string, enum: [dia, semana, mes] }
+                  totais:
+                    type: object
+                    properties:
+                      pedidos: { type: integer }
+                      pecas: { type: integer }
+                      vendasCentavos: { type: integer }
+                      comissaoCentavos: { type: integer }
+                      taxaPixCentavos: { type: integer }
+                      ticketMedioCentavos: { type: integer }
+                      comissaoPorPecaCentavos: { type: integer }
+                  serie: { type: array, items: { type: object, properties: { inicio: { type: string, format: date }, pedidos: { type: integer }, vendasCentavos: { type: integer }, comissaoCentavos: { type: integer } } } }
+                  porUf: { type: array, items: { type: object, properties: { uf: { type: string }, pedidos: { type: integer }, vendasCentavos: { type: integer } } } }
+                  cidades: { type: array, items: { type: object, properties: { cidade: { type: string }, uf: { type: string }, pedidos: { type: integer } } } }
+                  porCategoria: { type: array, items: { type: object, properties: { categoria: { type: string }, pecas: { type: integer }, vendasCentavos: { type: integer } } } }
+                  vendedoras: { type: array, items: { type: object, properties: { vendedoraId: { type: string }, nome: { type: string, description: só na demonstração }, pedidos: { type: integer }, vendasCentavos: { type: integer }, recebeCentavos: { type: integer } } } }
+        "400": { $ref: "#/components/responses/Invalido" }
         "401": { $ref: "#/components/responses/SemLogin" }
         "403": { $ref: "#/components/responses/Proibido" }
   /gestao/admin/pedidos:

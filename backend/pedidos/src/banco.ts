@@ -26,6 +26,8 @@ export interface ItemPedido {
   id: string;
   titulo: string;
   precoCentavos: number;
+  /** Categoria da peça no momento da compra (para o dashboard). Pedidos antigos não têm. */
+  categoria?: string;
 }
 
 export interface Pedido {

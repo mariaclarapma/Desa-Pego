@@ -392,6 +392,10 @@ recusa `UPDATE` e `DELETE` na tabela `lancamentos`. Cada lançamento é de uma c
 **Painel (`/admin`).** Tem as seções visão geral, usuárias (busca, bloquear e desbloquear), anúncios (ocultar e
 reexibir), pedidos (filtro por status), comissão, taxa do Pix, frete fixo, tabela de preço sugerido e repasses. A tela
 só esconde as opções: o backend responde 403 a quem não é a administradora master.
+- **Painel de vendas:** vendas e comissão por dia, semana ou mês, ticket médio, ganho por peça, vendas por estado e
+  cidade de entrega, por categoria e as vendedoras que mais vendem (`GET /api/gestao/admin/dashboard`). Enquanto não há
+  vendas reais, mostra uma **demonstração com dados fictícios**, gerados na hora e nunca gravados, sempre com o aviso
+  "dados fictícios" na tela.
 - Frete: fica no catálogo, que cobra o frete no checkout (`PUT /api/admin/frete`). A sacola e o checkout leem o valor
   atual em `GET /api/config`.
 - Taxa do Pix e tabela de preço sugerido: ficam no serviço de pedidos. O simulador e a sugestão de preço do anúncio
