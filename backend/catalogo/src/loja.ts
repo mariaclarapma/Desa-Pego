@@ -15,6 +15,9 @@ export interface Peca {
   precoCentavos: number;
   status: StatusPeca;
   reservadaAte?: string | null;
+  /** Ocultada pela administração (anúncio irregular): some da vitrine, da página e da reserva. */
+  oculta?: boolean;
+  motivoOculta?: string | null;
   [campo: string]: unknown;
 }
 

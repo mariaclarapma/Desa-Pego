@@ -35,3 +35,8 @@ services:
       # origem do site liberada no CORS (troque se usar outro domínio)
       - key: CORS_ORIGENS
         value: https://desapego.onrender.com
+      # administradora master (Ludy): preencha no painel do Render, nunca no repositório
+      - key: ADMIN_MASTER_EMAIL
+        sync: false
+      - key: ADMIN_MASTER_PASSWORD
+        sync: false

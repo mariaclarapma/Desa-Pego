@@ -215,7 +215,8 @@ workspaces:
 | `frontend/` | Next.js 15 (App Router), React 19, TypeScript e **Tailwind CSS v4**, com layout pensado primeiro para celular. Testes unitários com Vitest e E2E com **Cypress** (`frontend/cypress/`). |
 | `backend/contas/` | Serviço de contas: Express + TypeScript + PostgreSQL. Cadastro, login, JWT e CRUD da conta. Porta 3002. |
 | `backend/catalogo/` | API do catálogo: Express + TypeScript, com peças, reservas, pedidos e rotas de integração. Porta 3001. |
-| `backend/comum/` | Segurança compartilhada pelos dois serviços: CORS por lista, limite por IP e API key. |
+| `backend/pedidos/` | Módulo 05: pedidos (máquina de estados), carteira (livro-razão), repasses e painel da administração. Express + TypeScript + PostgreSQL. Porta 3003. |
+| `backend/comum/` | Peças compartilhadas pelos serviços: CORS por lista, limite por IP, API key, leitura do JWT, conexão com o Postgres, divisão em centavos e categorias permitidas. |
 
 ### Instalar e rodar
 
@@ -224,18 +225,18 @@ Requer **Node.js 22.13 ou mais novo**.
 ```bash
 npm install        # instala frontend e backend
 npm run gerar-env  # cria o .env com JWT_SECRET e API_KEYS aleatórios (só na primeira vez)
-npm run dev        # site em http://localhost:3000 · catálogo em :3001 · contas em :3002
+npm run dev        # site em http://localhost:3000 · catálogo :3001 · contas :3002 · pedidos :3003
 ```
 
 | Comando (na raiz) | O que faz |
 | --- | --- |
 | `npm test` | testes unitários e de API (Vitest + Supertest) do frontend e do backend |
-| `npm run e2e` | testes E2E com Cypress: faz o build, sobe os 3 serviços e roda tudo |
+| `npm run e2e` | testes E2E com Cypress: faz o build, sobe os serviços e roda tudo |
 | `npm run e2e:abrir` | abre o Cypress interativo (rode `npm run build` antes) |
 | `npm run cobertura` | cobertura combinada (Vitest + Cypress) com relatório em `coverage/index.html`; falha abaixo de 80% |
 | `npm run lint` / `npm run typecheck` / `npm run build` | lint, checagem de tipos e build de produção |
 | `npm run reset-db` | volta o catálogo ao estado inicial |
-| `npm start` | modo produção (depois do `npm run build`): site, contas e catálogo juntos, como na hospedagem |
+| `npm start` | modo produção (depois do `npm run build`): site, contas, catálogo e pedidos juntos, como na hospedagem |
 
 ### Variáveis de ambiente
 
@@ -248,9 +249,11 @@ Render.
 | `JWT_SECRET` | assina os tokens de acesso (32+ caracteres) | gerado a cada início | **obrigatório** |
 | `API_KEYS` | chaves aceitas no `X-API-Key` das rotas de integração (separadas por vírgula) | sem chave, a integração fica desligada | gerada pelo Render |
 | `CORS_ORIGENS` | origens do frontend liberadas no CORS (separadas por vírgula) | `http://localhost:3000` | **obrigatório** |
-| `DATABASE_URL` | PostgreSQL das contas (Supabase) | vazio = banco em memória | **obrigatório** |
+| `DATABASE_URL` | PostgreSQL das contas e dos pedidos (Supabase; schemas `contas` e `pedidos`) | vazio = banco em memória | **obrigatório** |
+| `ADMIN_MASTER_EMAIL`, `ADMIN_MASTER_PASSWORD` | conta da administradora master (Ludy), criada ou promovida ao iniciar | sem elas, não há master | no painel do Render |
+| `LIMITE_CADASTROS_POR_HORA` | cadastros por hora por IP | `10` | `10` |
 | `TRUST_PROXY` | proxies confiáveis para ler o IP real | `loopback` | `loopback, uniquelocal` |
-| `PORTA_CONTAS`, `PORTA_CATALOGO`, `CONTAS_API_URL`, `CATALOGO_API_URL`, `COOKIE_PATH` | portas e endereços internos | já preenchidos | iguais |
+| `PORTA_CONTAS`, `PORTA_CATALOGO`, `PORTA_PEDIDOS`, `CONTAS_API_URL`, `CATALOGO_API_URL`, `PEDIDOS_API_URL`, `COOKIE_PATH` | portas e endereços internos | já preenchidos | iguais |
 
 ### Testes
 
@@ -328,6 +331,77 @@ Pelo site, tudo fica sob `/api` (por exemplo, `https://desapego.onrender.com/api
 ```bash
 curl -H "X-API-Key: <sua chave do .env>" http://localhost:3000/api/integracao/pedidos?status=pago
 ```
+
+### Módulo 05: pedidos, carteira e administração ([#13](../../issues/13), [#14](../../issues/14), [#15](../../issues/15))
+
+Os endpoints estão documentados em [`docs/openapi.yaml`](docs/openapi.yaml).
+
+**Perfis.**
+- Qualquer conta compra e vende.
+- A **administradora master** (Ludy, perfil `ADMIN_MASTER`) é criada pela seed a partir de `ADMIN_MASTER_EMAIL` e
+  `ADMIN_MASTER_PASSWORD`. Só existe uma (há um índice único no banco), e ela não pode ser excluída nem bloqueada.
+  Só ela acessa o painel.
+
+**Pedido.** Os status seguem uma máquina de estados:
+
+| De | Para | Quem pode |
+| --- | --- | --- |
+| aguardando pagamento | pago | sistema (webhook do Pix, com API key) |
+| aguardando pagamento | cancelado | compradora, administração ou sistema (Pix expirado) |
+| pago | enviado | só a vendedora do pedido |
+| pago | cancelado | só a administração (estorna o saldo pendente) |
+| enviado | entregue (recebido) | só a compradora do pedido |
+
+- Uma transição fora da tabela responde **409**.
+- Quem não participa do pedido, ou tenta a ação da outra parte, recebe **403**.
+- O endereço de entrega só aparece para a vendedora.
+
+**Dinheiro.**
+- Os valores ficam em centavos inteiros, e a comissão em pontos-base (1000 = 10,00%), também inteira.
+- A comissão é arredondada só com inteiros (`backend/comum/dinheiro.ts`), e a vendedora fica com o resto. Então
+  **comissão + vendedora = total**, sem diferença de centavo. O frete vai inteiro para a vendedora, que é quem envia.
+- O percentual de comissão é **congelado no pedido**: mudar a comissão no painel vale só para os pedidos novos.
+
+**Carteira (livro-razão).** Cada fato gera um lançamento que nunca é alterado:
+
+| Fato | Efeito no saldo |
+| --- | --- |
+| pedido pago | o valor da vendedora entra como **pendente** |
+| pedido recebido | o valor passa de pendente para **disponível** |
+| pedido pago e depois cancelado | estorna o pendente |
+
+- A vendedora solicita o saque. O pedido é recusado (**422**) se passar do disponível menos o que já está em saque.
+- A administração faz o Pix manualmente e registra o pagamento, que debita o disponível.
+
+**Categorias.**
+- A lista é fixa: roupas femininas e masculinas, calçados, bolsas e acessórios (`backend/comum/categorias.ts`).
+- O painel marca como irregular o anúncio fora dela. A administração pode ocultá-lo, e ele não pode voltar à vitrine.
+- O Módulo 02 (anúncios) usa a mesma validação ao criar o anúncio.
+
+**Painel (`/admin`).** Tem as seções visão geral, usuárias (busca, bloquear e desbloquear), anúncios (ocultar e
+reexibir), pedidos (filtro por status), comissão e repasses. A tela só esconde as opções: o backend responde 403 a
+quem não é a administradora master.
+
+**Testes do Req. 015.**
+
+| Arquivo | O que cobre |
+| --- | --- |
+| `backend/pedidos/src/pedidos.test.ts` | transições válidas e inválidas, 403 para quem não é dona do pedido, divisão com R$ 10,01 e R$ 33,33, liberação do saldo só depois do recebimento, repasse maior que o saldo, comissão nova sem afetar pedidos antigos, 403 no painel |
+| `backend/comum/dinheiro.test.ts` | divisão exata para todos os valores de R$ 0,00 a R$ 100,00 em 8 comissões, e as categorias permitidas |
+| `backend/catalogo/src/app.test.ts` | admin oculta anúncio; anúncio em categoria não permitida (ex.: eletrônicos) é recusado |
+| `backend/contas/src/admin.test.ts` | seed da master, master protegida, bloqueio de contas, 403 no painel |
+| `frontend/src/app/admin/page.test.tsx` e `frontend/cypress/e2e/admin.cy.ts` | tela do painel, acesso restrito e auditoria de acessibilidade |
+
+```bash
+npm test -w backend   # testes do backend, incluindo o Req. 015
+npm run e2e           # E2E com o painel
+```
+
+**Ainda depende de outros módulos:**
+- o checkout real (Módulo 04) chamar `POST /api/gestao/interno/pedidos` e o webhook chamar
+  `/pagamento-confirmado`; até lá, o checkout de demonstração continua como estava;
+- o CRUD de anúncios da vendedora (Módulo 02);
+- a regra da chave Pix para anunciar (Módulo 01).
 
 ## Segurança da aplicação (o que está implementado)
 

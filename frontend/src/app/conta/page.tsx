@@ -185,6 +185,12 @@ export default function ContaPage() {
           <ButtonLink href={catalogoUrl()} variant="violeta" size="lg">
             ir pra vitrine
           </ButtonLink>
+          {/* só esconde o atalho: quem barra o acesso ao painel é o backend (403) */}
+          {usuario.perfil === "ADMIN_MASTER" ? (
+            <ButtonLink href={ROUTES.admin} variant="nevoa" size="lg">
+              painel da administração
+            </ButtonLink>
+          ) : null}
           <button type="button" onClick={encerrar} disabled={saindo} className={buttonClasses("nevoa", "lg")}>
             {saindo ? "saindo…" : "sair da conta"}
           </button>

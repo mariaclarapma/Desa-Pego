@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 import cookieParser from "cookie-parser";
 import express, { type NextFunction, type Request, type Response } from "express";
 import helmet from "helmet";
+import { z } from "zod";
 import { emailDuplicado, type Banco, type UsuarioRegistro } from "./banco.js";
 import { cors } from "../../comum/seguranca.js";
 import type { Config } from "./config.js";
@@ -14,7 +15,9 @@ const MINUTO = 60_000;
 const ERRO_CREDENCIAIS = "e-mail ou senha incorretos.";
 
 /** Dados públicos do usuário: a senha (nem o hash) nunca sai do serviço. */
-const publico = (u: UsuarioRegistro) => ({ id: u.id, nome: u.nome, email: u.email });
+/** Dados públicos do usuário: a senha (nem o hash) nunca sai do serviço. O perfil serve para o site mostrar o painel. */
+const publico = (u: UsuarioRegistro) => ({ id: u.id, nome: u.nome, email: u.email, perfil: u.perfil });
+const ERRO_BLOQUEADA = "esta conta está bloqueada. fale com a administração do desaPego.";
 
 /**
  * Serviço de contas (Módulo 01, Req. 001). Rotas em /auth:
@@ -24,7 +27,7 @@ const publico = (u: UsuarioRegistro) => ({ id: u.id, nome: u.nome, email: u.emai
 export function criarApp(banco: Banco, config: Config, agora: () => number = Date.now) {
   // 5 erros em 15 min bloqueiam por 15 min (por e-mail e por IP); cadastro: 10 por hora por IP
   const falhasLogin = new LimiteTentativas(5, 15 * MINUTO, 15 * MINUTO, agora);
-  const cadastros = new LimiteTentativas(10, 60 * MINUTO, 60 * MINUTO, agora);
+  const cadastros = new LimiteTentativas(config.cadastrosPorHora ?? 10, 60 * MINUTO, 60 * MINUTO, agora);
 
   const app = express();
   app.disable("x-powered-by");
@@ -83,6 +86,7 @@ export function criarApp(banco: Banco, config: Config, agora: () => number = Dat
       email,
       senha_hash: await gerarHashSenha(senha),
       perfil: "USUARIO",
+      bloqueada: false,
       criado_em: new Date(agora()).toISOString(),
     };
     try {
@@ -110,6 +114,8 @@ export function criarApp(banco: Banco, config: Config, agora: () => number = Dat
       return res.status(401).json({ erro: ERRO_CREDENCIAIS });
     }
     falhasLogin.limpar(chaves[0]);
+    // só depois da senha certa: assim o bloqueio não revela quais e-mails existem
+    if (usuario!.bloqueada) return res.status(403).json({ erro: ERRO_BLOQUEADA });
     res.json(await abrirSessao(res, usuario!));
   });
 
@@ -127,7 +133,7 @@ export function criarApp(banco: Banco, config: Config, agora: () => number = Dat
       return res.status(401).json({ erro: "sessão expirada. entre de novo." });
     }
     const usuario = await banco.usuarioPorId(sessao.usuario_id);
-    if (!usuario || new Date(sessao.expira_em).getTime() <= agora()) {
+    if (!usuario || usuario.bloqueada || new Date(sessao.expira_em).getTime() <= agora()) {
       await banco.revogarSessao(sessao.id);
       limparCookie(res);
       return res.status(401).json({ erro: "sessão expirada. entre de novo." });
@@ -151,7 +157,16 @@ export function criarApp(banco: Banco, config: Config, agora: () => number = Dat
     const dados = tipo === "Bearer" && token ? await lerTokenAcesso(token, config.jwtSegredo) : null;
     const usuario = dados ? await banco.usuarioPorId(dados.sub) : undefined;
     if (!usuario) return res.status(401).json({ erro: "não autenticado." });
+    if (usuario.bloqueada) return res.status(403).json({ erro: ERRO_BLOQUEADA });
     res.locals.usuario = usuario;
+    next();
+  }
+
+  /** Painel do admin: só a administradora master (o perfil é relido do banco, não só do token). */
+  function somenteAdminMaster(_req: Request, res: Response, next: NextFunction) {
+    if ((res.locals.usuario as UsuarioRegistro).perfil !== "ADMIN_MASTER") {
+      return res.status(403).json({ erro: "acesso restrito à administração." });
+    }
     next();
   }
 
@@ -222,6 +237,9 @@ export function criarApp(banco: Banco, config: Config, agora: () => number = Dat
   // DELETE: exclusão definitiva com a senha. Encerra todas as sessões e apaga o cookie.
   rotas.delete("/me", autenticado, async (req, res) => {
     const usuario: UsuarioRegistro = res.locals.usuario;
+    if (usuario.perfil === "ADMIN_MASTER") {
+      return res.status(403).json({ erro: "a conta da administradora master não pode ser excluída." });
+    }
     const dados = esquemaExclusao.safeParse(req.body ?? {});
     if (!dados.success) return erroValidacao(res, dados.error);
     if (!(await reautenticar(res, usuario, dados.data.senha, "senha"))) return;
@@ -231,6 +249,28 @@ export function criarApp(banco: Banco, config: Config, agora: () => number = Dat
     limparCookie(res);
     res.status(204).end();
   });
+
+  // ---- Painel do admin (Módulo 05): usuárias. Só a administradora master. ----
+  const idConta = z.string().uuid("id inválido.");
+
+  rotas.get("/admin/usuarios", autenticado, somenteAdminMaster, async (req, res) => {
+    const busca = z.string().max(120).optional().parse(req.query.busca) ?? "";
+    res.json({ usuarios: await banco.listarUsuarios(busca) });
+  });
+
+  async function mudarBloqueio(req: Request, res: Response, bloquear: boolean) {
+    const id = idConta.safeParse(req.params.id);
+    if (!id.success) return res.status(400).json({ erro: "id inválido." });
+    const alvo = await banco.usuarioPorId(id.data);
+    if (!alvo) return res.status(404).json({ erro: "conta não encontrada." });
+    if (alvo.perfil === "ADMIN_MASTER") return res.status(403).json({ erro: "a administradora master não pode ser bloqueada." });
+    await banco.definirBloqueio(alvo.id, bloquear);
+    // bloquear derruba as sessões: a pessoa não renova o acesso nem em outros aparelhos
+    if (bloquear) await banco.revogarSessoesDoUsuario(alvo.id);
+    res.json({ usuario: { ...publico(alvo), bloqueada: bloquear } });
+  }
+  rotas.post("/admin/usuarios/:id/bloquear", autenticado, somenteAdminMaster, (req, res) => mudarBloqueio(req, res, true));
+  rotas.post("/admin/usuarios/:id/desbloquear", autenticado, somenteAdminMaster, (req, res) => mudarBloqueio(req, res, false));
 
   app.use("/auth", rotas);
   app.use((_req, res) => {

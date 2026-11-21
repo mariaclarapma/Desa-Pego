@@ -1,6 +1,8 @@
 import express, { type NextFunction, type Request, type Response } from "express";
 import helmet from "helmet";
 import { z } from "zod";
+import { exigirAdminMaster, exigirLogin } from "../../comum/autenticacao.js";
+import { categoriaPermitida } from "../../comum/categorias.js";
 import { cors, exigirApiKey, limiteRequisicoes } from "../../comum/seguranca.js";
 import type { Loja, Peca, Pedido } from "./loja.js";
 
@@ -10,6 +12,8 @@ export interface ConfigCatalogo {
   trustProxy: string | number;
   reservaMinutos: number;
   freteCentavos: number;
+  /** Segredo do JWT do serviço de contas: o painel do admin (ocultar anúncios) exige login. */
+  jwtSegredo: Uint8Array;
 }
 
 /** Erro de regra de negócio: vira a resposta { erro } com o status dado. */
@@ -71,13 +75,14 @@ export function criarAppCatalogo(loja: Loja, config: ConfigCatalogo, agora: () =
 
   const achar = (pecaId: string) => {
     const peca = loja.peca(pecaId);
-    if (!peca) throw new Recusa(404, "essa peça não existe mais.");
+    // anúncio ocultado pela administração conta como inexistente para o público
+    if (!peca || peca.oculta) throw new Recusa(404, "essa peça não existe mais.");
     return peca;
   };
-  const pecaPublica = (p: Peca) => ({ ...p, status: statusAtual(p, agora()) });
+  const pecaPublica = ({ oculta: _oculta, motivoOculta: _motivo, ...p }: Peca) => ({ ...p, status: statusAtual(p, agora()) });
 
   app.get("/pecas", (_req, res) => {
-    res.json(loja.listarPecas().map(pecaPublica));
+    res.json(loja.listarPecas().filter((p) => !p.oculta).map(pecaPublica));
   });
 
   app.get("/pecas/:id", (req, res) => {
@@ -183,6 +188,51 @@ export function criarAppCatalogo(loja: Loja, config: ConfigCatalogo, agora: () =
   });
 
   app.use("/integracao", integracao);
+
+  // ---- painel do admin (Módulo 05): anúncios. Só a administradora master. ----
+  const admin = express.Router();
+  admin.use(exigirLogin(config.jwtSegredo), exigirAdminMaster);
+
+  /** Todos os anúncios, inclusive os ocultos; "irregular" = fora das categorias de moda. */
+  admin.get("/pecas", (_req, res) => {
+    res.json({
+      pecas: loja.listarPecas().map((p) => ({
+        ...p,
+        status: statusAtual(p, agora()),
+        oculta: !!p.oculta,
+        irregular: !categoriaPermitida(p.categoria),
+      })),
+    });
+  });
+
+  admin.post("/pecas/:id/ocultar", escrita, async (req, res) => {
+    const pecaId = id.parse(req.params.id);
+    const { motivo } = z.object({ motivo: z.string().trim().max(200).optional() }).parse(req.body ?? {});
+    const peca = await loja.alterarEmFila(() => {
+      const p = loja.peca(pecaId);
+      if (!p) throw new Recusa(404, "anúncio não encontrado.");
+      p.oculta = true;
+      p.motivoOculta = motivo ?? (categoriaPermitida(p.categoria) ? "anúncio irregular" : "fora das categorias permitidas");
+      return { ...p };
+    });
+    res.json(peca);
+  });
+
+  /** Volta a mostrar o anúncio, mas nunca um que esteja fora das categorias permitidas. */
+  admin.post("/pecas/:id/reexibir", escrita, async (req, res) => {
+    const pecaId = id.parse(req.params.id);
+    const peca = await loja.alterarEmFila(() => {
+      const p = loja.peca(pecaId);
+      if (!p) throw new Recusa(404, "anúncio não encontrado.");
+      if (!categoriaPermitida(p.categoria)) throw new Recusa(422, "categoria não permitida: o desaPego aceita só roupas, calçados, bolsas e acessórios.");
+      p.oculta = false;
+      p.motivoOculta = null;
+      return { ...p };
+    });
+    res.json(peca);
+  });
+
+  app.use("/admin", admin);
 
   app.use((_req, res) => {
     res.status(404).json({ erro: "rota não encontrada." });

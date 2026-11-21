@@ -9,5 +9,5 @@
     "skipLibCheck": true,
     "types": ["node"]
   },
-  "include": ["contas/src", "catalogo/src", "comum"]
+  "include": ["contas/src", "catalogo/src", "pedidos/src", "comum"]
 }

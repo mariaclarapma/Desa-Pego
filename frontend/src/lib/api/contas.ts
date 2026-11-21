@@ -9,6 +9,8 @@ export interface UsuarioLogado {
   id: string;
   nome: string;
   email: string;
+  /** "ADMIN_MASTER" mostra o atalho do painel. Quem decide o acesso é o backend. */
+  perfil?: "USUARIO" | "ADMIN" | "ADMIN_MASTER";
 }
 
 export interface Sessao {

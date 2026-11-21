@@ -18,11 +18,18 @@ const env = {
   JWT_SECRET: process.env.JWT_SECRET || segredo(),
   API_KEYS: process.env.API_KEYS || segredo(),
   CORS_ORIGENS: "http://localhost:3000",
+  // administradora master só dos testes (senha aleatória a cada execução); o Cypress recebe pelo CYPRESS_*
+  ADMIN_MASTER_EMAIL: "ludy-e2e@desapego.test",
+  ADMIN_MASTER_PASSWORD: `Ludy${randomBytes(9).toString("hex")}1`,
+  // a suíte cria várias contas do mesmo IP; em produção o limite continua 10 por hora
+  LIMITE_CADASTROS_POR_HORA: "200",
   PORT: "3000",
   ...(cobertura ? { COBERTURA: "1" } : {}),
 };
 // o VS Code define ELECTRON_RUN_AS_NODE=1 nos processos que abre; com ela, o Cypress (Electron) não inicia
 delete env.ELECTRON_RUN_AS_NODE;
+env.CYPRESS_ADMIN_EMAIL = env.ADMIN_MASTER_EMAIL;
+env.CYPRESS_ADMIN_SENHA = env.ADMIN_MASTER_PASSWORD;
 const rodar = (comando) => execSync(comando, { stdio: "inherit", env });
 
 copyFileSync("backend/db.seed.json", "backend/db.json"); // catálogo sempre no estado inicial
@@ -31,12 +38,13 @@ if (!abrir) rodar("npm run build -w frontend");
 const servidores = [
   "npm run start:contas -w backend",
   "npm run start:catalogo -w backend",
+  "npm run start:pedidos -w backend",
   "npm run start -w frontend",
 ];
-const cypress = `wait-on -t 120000 http://localhost:3000 http://localhost:3001/pecas http://localhost:3002/auth/saude && npm run ${abrir ? "cypress:abrir" : "cypress:rodar"} -w frontend`;
+const cypress = `wait-on -t 120000 http://localhost:3000 http://localhost:3001/pecas http://localhost:3002/auth/saude http://localhost:3003/saude && npm run ${abrir ? "cypress:abrir" : "cypress:rodar"} -w frontend`;
 const filho = spawn(
   "npx",
-  ["concurrently", "-k", "-s", "command-cypress", "-n", "contas,catalogo,site,cypress", ...servidores.map((s) => `"${s}"`), `"${cypress}"`],
+  ["concurrently", "-k", "-s", "command-cypress", "-n", "contas,catalogo,pedidos,site,cypress", ...servidores.map((s) => `"${s}"`), `"${cypress}"`],
   { stdio: "inherit", env, shell: true },
 );
 filho.on("exit", (codigo) => {

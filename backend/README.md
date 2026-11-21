@@ -111,3 +111,20 @@ ficam em `catalogo/src/app.test.ts`.
 `seguranca.ts`: CORS por lista de origens (nunca `*`; origem de fora recebe 403), limite de requisições por IP e
 API key no cabeçalho `X-API-Key` (chaves em `API_KEYS`, comparadas em tempo constante). Os dois serviços usam esse
 módulo. Testes em `comum/seguranca.test.ts`.
+
+## Pedidos, carteira e administração (`pedidos/`, Módulo 05)
+
+Express + TypeScript + PostgreSQL (schema `pedidos`, separado do de contas; sem `DATABASE_URL`, usa o pg-mem).
+Porta 3003, acessada pelo site em `/api/gestao/*`. Os endpoints estão em [`../docs/openapi.yaml`](../docs/openapi.yaml).
+
+- `estados.ts`: a máquina de estados do pedido e quem pode fazer cada transição.
+- `banco.ts`: pedidos com a comissão congelada, livro-razão da carteira (lançamentos só são inseridos), repasses e
+  a configuração da comissão. As alterações passam por uma fila: conferir o saldo e debitar acontecem juntos.
+- `app.ts`: rotas da usuária (compras, vendas, enviar, confirmar o recebimento, carteira e saque), rotas internas
+  com `X-API-Key` (checkout e webhook do Pix) e o painel (`ADMIN_MASTER`).
+- Testes: `pedidos.test.ts` (Req. 015). As contas e o checkout são simulados: as usuárias são tokens JWT assinados
+  com o segredo de teste, e os pedidos entram pela rota interna.
+
+O serviço de contas ganhou o perfil `ADMIN_MASTER` (seed com `ADMIN_MASTER_EMAIL` e `ADMIN_MASTER_PASSWORD`), o
+bloqueio de contas e as rotas `GET /auth/admin/usuarios`, `POST /auth/admin/usuarios/:id/bloquear` e `/desbloquear`.
+O catálogo ganhou `GET /admin/pecas`, `POST /admin/pecas/:id/ocultar` e `/reexibir`.

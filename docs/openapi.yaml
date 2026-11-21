@@ -1,0 +1,419 @@
+openapi: 3.1.0
+info:
+  title: desaPego · Módulo 05 (Pedidos, Carteira e Administração)
+  version: 1.0.0
+  description: |
+    Endpoints novos do Módulo 05 (Req. 013, 014 e 015). Pelo site, tudo fica sob `/api`:
+    - pedidos, carteira e painel → `/api/gestao/*` (serviço de pedidos, porta 3003)
+    - usuárias do painel → `/api/auth/admin/*` (serviço de contas, porta 3002)
+    - anúncios do painel → `/api/admin/*` (catálogo, porta 3001)
+
+    Dinheiro sempre em **centavos inteiros**. Comissão em **pontos-base** (1000 = 10,00%).
+    Rotas com login usam o token de acesso do serviço de contas (`Authorization: Bearer …`).
+    Rotas do painel: só o perfil `ADMIN_MASTER`; qualquer outro perfil recebe **403**.
+servers:
+  - url: http://localhost:3000/api
+    description: desenvolvimento (pelo proxy do Next.js)
+  - url: https://desapego.onrender.com/api
+    description: produção
+
+tags:
+  - name: pedidos
+    description: compras e vendas da usuária logada (Req. 013)
+  - name: carteira
+    description: saldo, extrato e saques da vendedora (Req. 014)
+  - name: admin
+    description: painel da administradora master (Req. 014)
+  - name: interno
+    description: chamadas do checkout e do webhook do Pix (Módulo 04), com X-API-Key
+
+components:
+  securitySchemes:
+    token:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+    apiKey:
+      type: apiKey
+      in: header
+      name: X-API-Key
+  parameters:
+    id:
+      name: id
+      in: path
+      required: true
+      schema: { type: string }
+    status:
+      name: status
+      in: query
+      schema: { $ref: "#/components/schemas/StatusPedido" }
+  schemas:
+    StatusPedido:
+      type: string
+      enum: [AGUARDANDO_PAGAMENTO, PAGO, ENVIADO, ENTREGUE, CANCELADO]
+      description: |
+        AGUARDANDO_PAGAMENTO → PAGO (sistema) → ENVIADO (vendedora) → ENTREGUE (compradora).
+        CANCELADO a partir de AGUARDANDO_PAGAMENTO (compradora, admin ou sistema) ou de PAGO (admin).
+        Qualquer outra transição → 409.
+    Item:
+      type: object
+      required: [id, titulo, precoCentavos]
+      properties:
+        id: { type: string }
+        titulo: { type: string }
+        precoCentavos: { type: integer, minimum: 1 }
+    Pedido:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        compradoraId: { type: string }
+        vendedoraId: { type: string }
+        itens: { type: array, items: { $ref: "#/components/schemas/Item" } }
+        endereco:
+          type: object
+          additionalProperties: { type: string }
+          description: só aparece para a vendedora do pedido
+        subtotalCentavos: { type: integer }
+        freteCentavos: { type: integer }
+        totalCentavos: { type: integer }
+        comissaoPontosBase: { type: integer, description: comissão congelada no momento da compra }
+        comissaoCentavos: { type: integer }
+        vendedoraCentavos: { type: integer, description: "parte da vendedora nas peças + frete; comissão + vendedora = total" }
+        status: { $ref: "#/components/schemas/StatusPedido" }
+        criadoEm: { type: string, format: date-time }
+        atualizadoEm: { type: string, format: date-time }
+    Lancamento:
+      type: object
+      properties:
+        id: { type: string }
+        tipo: { type: string, enum: [venda, liberacao, estorno, repasse] }
+        pedidoId: { type: [string, "null"] }
+        repasseId: { type: [string, "null"] }
+        pendenteCentavos: { type: integer }
+        disponivelCentavos: { type: integer }
+        criadoEm: { type: string, format: date-time }
+    Carteira:
+      type: object
+      properties:
+        pendenteCentavos: { type: integer, description: vendas pagas ainda não recebidas pela compradora }
+        disponivelCentavos: { type: integer, description: liberado depois do recebimento }
+        emSaqueCentavos: { type: integer, description: saques solicitados e ainda não pagos }
+        podeSacarCentavos: { type: integer }
+        extrato: { type: array, items: { $ref: "#/components/schemas/Lancamento" } }
+    Repasse:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        vendedoraId: { type: string }
+        valorCentavos: { type: integer, minimum: 1 }
+        status: { type: string, enum: [SOLICITADO, PAGO] }
+        criadoEm: { type: string, format: date-time }
+        pagoEm: { type: [string, "null"], format: date-time }
+    Usuaria:
+      type: object
+      properties:
+        id: { type: string, format: uuid }
+        nome: { type: string }
+        email: { type: string, format: email }
+        perfil: { type: string, enum: [USUARIO, ADMIN, ADMIN_MASTER] }
+        bloqueada: { type: boolean }
+        criado_em: { type: string, format: date-time }
+    AnuncioAdmin:
+      type: object
+      properties:
+        id: { type: string }
+        titulo: { type: string }
+        categoria: { type: string }
+        precoCentavos: { type: integer }
+        status: { type: string, enum: [disponivel, reservada, vendida] }
+        oculta: { type: boolean }
+        motivoOculta: { type: [string, "null"] }
+        irregular: { type: boolean, description: "fora das categorias permitidas (roupas, calçados, bolsas e acessórios)" }
+    Erro:
+      type: object
+      required: [erro]
+      properties:
+        erro: { type: string }
+        campos: { type: object, additionalProperties: { type: string } }
+  responses:
+    Pedido: { description: pedido, content: { application/json: { schema: { $ref: "#/components/schemas/Pedido" } } } }
+    Invalido: { description: dados inválidos, content: { application/json: { schema: { $ref: "#/components/schemas/Erro" } } } }
+    SemLogin: { description: sem token ou token inválido, content: { application/json: { schema: { $ref: "#/components/schemas/Erro" } } } }
+    Proibido: { description: não é dona do pedido, não pode fazer esta ação ou não é administradora, content: { application/json: { schema: { $ref: "#/components/schemas/Erro" } } } }
+    NaoEncontrado: { description: não encontrado, content: { application/json: { schema: { $ref: "#/components/schemas/Erro" } } } }
+    TransicaoInvalida: { description: transição de status inválida, content: { application/json: { schema: { $ref: "#/components/schemas/Erro" } } } }
+    SaldoInsuficiente: { description: valor maior que o saldo disponível, content: { application/json: { schema: { $ref: "#/components/schemas/Erro" } } } }
+
+paths:
+  /gestao/interno/pedidos:
+    post:
+      tags: [interno]
+      summary: Cria o pedido (checkout, Módulo 04). Congela a comissão vigente e divide o valor.
+      security: [{ apiKey: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [compradoraId, vendedoraId, itens, freteCentavos, endereco]
+              properties:
+                compradoraId: { type: string }
+                vendedoraId: { type: string, description: diferente da compradora }
+                itens: { type: array, minItems: 1, maxItems: 20, items: { $ref: "#/components/schemas/Item" } }
+                freteCentavos: { type: integer, minimum: 0 }
+                endereco: { type: object, additionalProperties: { type: string } }
+      responses:
+        "201": { $ref: "#/components/responses/Pedido" }
+        "400": { $ref: "#/components/responses/Invalido" }
+        "401": { description: X-API-Key ausente ou inválida }
+  /gestao/interno/pedidos/{id}/pagamento-confirmado:
+    post:
+      tags: [interno]
+      summary: Webhook do Pix confirmado → PAGO; lança o valor da vendedora como pendente
+      security: [{ apiKey: [] }]
+      parameters: [{ $ref: "#/components/parameters/id" }]
+      responses:
+        "200": { $ref: "#/components/responses/Pedido" }
+        "401": { description: X-API-Key ausente ou inválida }
+        "404": { $ref: "#/components/responses/NaoEncontrado" }
+        "409": { $ref: "#/components/responses/TransicaoInvalida" }
+  /gestao/interno/pedidos/{id}/expirar:
+    post:
+      tags: [interno]
+      summary: Pix expirado → CANCELADO
+      security: [{ apiKey: [] }]
+      parameters: [{ $ref: "#/components/parameters/id" }]
+      responses:
+        "200": { $ref: "#/components/responses/Pedido" }
+        "409": { $ref: "#/components/responses/TransicaoInvalida" }
+
+  /gestao/pedidos/compras:
+    get:
+      tags: [pedidos]
+      summary: Compras da usuária logada (sem o endereço)
+      security: [{ token: [] }]
+      parameters: [{ $ref: "#/components/parameters/status" }]
+      responses:
+        "200": { description: lista, content: { application/json: { schema: { type: object, properties: { pedidos: { type: array, items: { $ref: "#/components/schemas/Pedido" } } } } } } }
+        "401": { $ref: "#/components/responses/SemLogin" }
+  /gestao/pedidos/vendas:
+    get:
+      tags: [pedidos]
+      summary: Vendas da usuária logada (com o endereço de entrega)
+      security: [{ token: [] }]
+      parameters: [{ $ref: "#/components/parameters/status" }]
+      responses:
+        "200": { description: lista, content: { application/json: { schema: { type: object, properties: { pedidos: { type: array, items: { $ref: "#/components/schemas/Pedido" } } } } } } }
+        "401": { $ref: "#/components/responses/SemLogin" }
+  /gestao/pedidos/{id}:
+    get:
+      tags: [pedidos]
+      summary: Um pedido (só a compradora, a vendedora ou a administradora master)
+      security: [{ token: [] }]
+      parameters: [{ $ref: "#/components/parameters/id" }]
+      responses:
+        "200": { $ref: "#/components/responses/Pedido" }
+        "403": { $ref: "#/components/responses/Proibido" }
+        "404": { $ref: "#/components/responses/NaoEncontrado" }
+  /gestao/pedidos/{id}/enviar:
+    post:
+      tags: [pedidos]
+      summary: PAGO → ENVIADO (só a vendedora do pedido)
+      security: [{ token: [] }]
+      parameters: [{ $ref: "#/components/parameters/id" }]
+      responses:
+        "200": { $ref: "#/components/responses/Pedido" }
+        "403": { $ref: "#/components/responses/Proibido" }
+        "409": { $ref: "#/components/responses/TransicaoInvalida" }
+  /gestao/pedidos/{id}/confirmar-recebimento:
+    post:
+      tags: [pedidos]
+      summary: ENVIADO → ENTREGUE (só a compradora). Libera o saldo da vendedora.
+      security: [{ token: [] }]
+      parameters: [{ $ref: "#/components/parameters/id" }]
+      responses:
+        "200": { $ref: "#/components/responses/Pedido" }
+        "403": { $ref: "#/components/responses/Proibido" }
+        "409": { $ref: "#/components/responses/TransicaoInvalida" }
+  /gestao/pedidos/{id}/cancelar:
+    post:
+      tags: [pedidos]
+      summary: AGUARDANDO_PAGAMENTO → CANCELADO (só a compradora)
+      security: [{ token: [] }]
+      parameters: [{ $ref: "#/components/parameters/id" }]
+      responses:
+        "200": { $ref: "#/components/responses/Pedido" }
+        "403": { $ref: "#/components/responses/Proibido" }
+        "409": { $ref: "#/components/responses/TransicaoInvalida" }
+
+  /gestao/carteira:
+    get:
+      tags: [carteira]
+      summary: Saldo pendente, disponível, em saque e extrato (livro-razão)
+      security: [{ token: [] }]
+      responses:
+        "200": { description: carteira, content: { application/json: { schema: { $ref: "#/components/schemas/Carteira" } } } }
+        "401": { $ref: "#/components/responses/SemLogin" }
+  /gestao/carteira/repasses:
+    get:
+      tags: [carteira]
+      summary: Saques da vendedora logada
+      security: [{ token: [] }]
+      responses:
+        "200": { description: lista, content: { application/json: { schema: { type: object, properties: { repasses: { type: array, items: { $ref: "#/components/schemas/Repasse" } } } } } } }
+    post:
+      tags: [carteira]
+      summary: Solicita um saque (nunca maior que o disponível menos o que já está em saque)
+      security: [{ token: [] }]
+      requestBody:
+        required: true
+        content: { application/json: { schema: { type: object, required: [valorCentavos], properties: { valorCentavos: { type: integer, minimum: 1 } } } } }
+      responses:
+        "201": { description: solicitação criada, content: { application/json: { schema: { $ref: "#/components/schemas/Repasse" } } } }
+        "400": { $ref: "#/components/responses/Invalido" }
+        "422": { $ref: "#/components/responses/SaldoInsuficiente" }
+
+  /gestao/admin/resumo:
+    get:
+      tags: [admin]
+      summary: Visão geral (pedidos por status, vendas, comissão e repasses)
+      security: [{ token: [] }]
+      responses:
+        "200":
+          description: resumo
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  pedidosPorStatus: { type: object, additionalProperties: { type: integer } }
+                  vendas: { type: object, properties: { quantidade: { type: integer }, totalCentavos: { type: integer }, comissaoCentavos: { type: integer } } }
+                  repasses: { type: object, additionalProperties: { type: object, properties: { quantidade: { type: integer }, totalCentavos: { type: integer } } } }
+                  comissaoPontosBase: { type: integer }
+        "401": { $ref: "#/components/responses/SemLogin" }
+        "403": { $ref: "#/components/responses/Proibido" }
+  /gestao/admin/pedidos:
+    get:
+      tags: [admin]
+      summary: Todos os pedidos, com filtro por status
+      security: [{ token: [] }]
+      parameters: [{ $ref: "#/components/parameters/status" }]
+      responses:
+        "200": { description: lista, content: { application/json: { schema: { type: object, properties: { pedidos: { type: array, items: { $ref: "#/components/schemas/Pedido" } } } } } } }
+        "403": { $ref: "#/components/responses/Proibido" }
+  /gestao/admin/pedidos/{id}/cancelar:
+    post:
+      tags: [admin]
+      summary: Cancela pedido aguardando pagamento ou pago (estorna o pendente)
+      security: [{ token: [] }]
+      parameters: [{ $ref: "#/components/parameters/id" }]
+      responses:
+        "200": { $ref: "#/components/responses/Pedido" }
+        "403": { $ref: "#/components/responses/Proibido" }
+        "409": { $ref: "#/components/responses/TransicaoInvalida" }
+  /gestao/admin/comissao:
+    get:
+      tags: [admin]
+      summary: Comissão atual
+      security: [{ token: [] }]
+      responses:
+        "200": { description: comissão, content: { application/json: { schema: { type: object, properties: { comissaoPontosBase: { type: integer } } } } } }
+        "403": { $ref: "#/components/responses/Proibido" }
+    put:
+      tags: [admin]
+      summary: Altera a comissão. Vale só para pedidos novos.
+      security: [{ token: [] }]
+      requestBody:
+        required: true
+        content: { application/json: { schema: { type: object, required: [comissaoPontosBase], properties: { comissaoPontosBase: { type: integer, minimum: 0, maximum: 5000 } } } } }
+      responses:
+        "200": { description: comissão salva, content: { application/json: { schema: { type: object, properties: { comissaoPontosBase: { type: integer } } } } } }
+        "400": { $ref: "#/components/responses/Invalido" }
+        "403": { $ref: "#/components/responses/Proibido" }
+  /gestao/admin/repasses:
+    get:
+      tags: [admin]
+      summary: Solicitações de saque das vendedoras
+      security: [{ token: [] }]
+      parameters:
+        - { name: status, in: query, schema: { type: string, enum: [SOLICITADO, PAGO] } }
+      responses:
+        "200": { description: lista, content: { application/json: { schema: { type: object, properties: { repasses: { type: array, items: { $ref: "#/components/schemas/Repasse" } } } } } } }
+        "403": { $ref: "#/components/responses/Proibido" }
+  /gestao/admin/repasses/{id}/pagar:
+    post:
+      tags: [admin]
+      summary: Registra o Pix manual à vendedora; debita o disponível (nunca maior que ele)
+      security: [{ token: [] }]
+      parameters: [{ $ref: "#/components/parameters/id" }]
+      responses:
+        "200": { description: repasse pago, content: { application/json: { schema: { $ref: "#/components/schemas/Repasse" } } } }
+        "403": { $ref: "#/components/responses/Proibido" }
+        "404": { $ref: "#/components/responses/NaoEncontrado" }
+        "409": { description: repasse já pago }
+        "422": { $ref: "#/components/responses/SaldoInsuficiente" }
+
+  /auth/admin/usuarios:
+    get:
+      tags: [admin]
+      summary: Lista e busca contas por nome ou e-mail (sem senha nem hash)
+      security: [{ token: [] }]
+      parameters:
+        - { name: busca, in: query, schema: { type: string, maxLength: 120 } }
+      responses:
+        "200": { description: lista, content: { application/json: { schema: { type: object, properties: { usuarios: { type: array, items: { $ref: "#/components/schemas/Usuaria" } } } } } } }
+        "401": { $ref: "#/components/responses/SemLogin" }
+        "403": { $ref: "#/components/responses/Proibido" }
+  /auth/admin/usuarios/{id}/bloquear:
+    post:
+      tags: [admin]
+      summary: Bloqueia a conta (não entra nem renova a sessão; as sessões caem). A master não pode ser bloqueada.
+      security: [{ token: [] }]
+      parameters: [{ $ref: "#/components/parameters/id" }]
+      responses:
+        "200": { description: conta bloqueada, content: { application/json: { schema: { type: object, properties: { usuario: { $ref: "#/components/schemas/Usuaria" } } } } } }
+        "400": { $ref: "#/components/responses/Invalido" }
+        "403": { $ref: "#/components/responses/Proibido" }
+        "404": { $ref: "#/components/responses/NaoEncontrado" }
+  /auth/admin/usuarios/{id}/desbloquear:
+    post:
+      tags: [admin]
+      summary: Desbloqueia a conta
+      security: [{ token: [] }]
+      parameters: [{ $ref: "#/components/parameters/id" }]
+      responses:
+        "200": { description: conta desbloqueada, content: { application/json: { schema: { type: object, properties: { usuario: { $ref: "#/components/schemas/Usuaria" } } } } } }
+        "403": { $ref: "#/components/responses/Proibido" }
+        "404": { $ref: "#/components/responses/NaoEncontrado" }
+
+  /admin/pecas:
+    get:
+      tags: [admin]
+      summary: Todos os anúncios, inclusive os ocultos, com a marca de irregular
+      security: [{ token: [] }]
+      responses:
+        "200": { description: lista, content: { application/json: { schema: { type: object, properties: { pecas: { type: array, items: { $ref: "#/components/schemas/AnuncioAdmin" } } } } } } }
+        "403": { $ref: "#/components/responses/Proibido" }
+  /admin/pecas/{id}/ocultar:
+    post:
+      tags: [admin]
+      summary: Oculta o anúncio (some da vitrine, da página e da reserva)
+      security: [{ token: [] }]
+      parameters: [{ $ref: "#/components/parameters/id" }]
+      requestBody:
+        content: { application/json: { schema: { type: object, properties: { motivo: { type: string, maxLength: 200 } } } } }
+      responses:
+        "200": { description: anúncio oculto, content: { application/json: { schema: { $ref: "#/components/schemas/AnuncioAdmin" } } } }
+        "403": { $ref: "#/components/responses/Proibido" }
+        "404": { $ref: "#/components/responses/NaoEncontrado" }
+  /admin/pecas/{id}/reexibir:
+    post:
+      tags: [admin]
+      summary: Volta a mostrar o anúncio. Fora das categorias permitidas → 422.
+      security: [{ token: [] }]
+      parameters: [{ $ref: "#/components/parameters/id" }]
+      responses:
+        "200": { description: anúncio visível, content: { application/json: { schema: { $ref: "#/components/schemas/AnuncioAdmin" } } } }
+        "403": { $ref: "#/components/responses/Proibido" }
+        "422": { description: categoria não permitida, content: { application/json: { schema: { $ref: "#/components/schemas/Erro" } } } }

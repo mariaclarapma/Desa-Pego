@@ -1,0 +1,8 @@
+# Falsos positivos do gitleaks (regra generic-api-key): senhas FALSAS de teste escritas no commit
+# 551596d em backend/contas/src/admin.test.ts. Nunca foram credenciais reais. O arquivo foi corrigido
+# no commit seguinte (as senhas de teste agora são geradas na execução), mas o gitleaks examina todo o
+# histórico da branch, então estas ocorrências antigas ficam registradas aqui.
+551596dfcacaea9eba5079b494145be4b8ffc590:backend/contas/src/admin.test.ts:generic-api-key:21
+551596dfcacaea9eba5079b494145be4b8ffc590:backend/contas/src/admin.test.ts:generic-api-key:61
+551596dfcacaea9eba5079b494145be4b8ffc590:backend/contas/src/admin.test.ts:generic-api-key:67
+551596dfcacaea9eba5079b494145be4b8ffc590:backend/contas/src/admin.test.ts:generic-api-key:73

@@ -1,4 +1,5 @@
 import { fileURLToPath } from "node:url";
+import { SignJWT } from "jose";
 import request from "supertest";
 import { beforeEach, describe, expect, it } from "vitest";
 import { criarAppCatalogo } from "./app.js";
@@ -6,6 +7,7 @@ import { abrirLoja } from "./loja.js";
 
 const SEMENTE = fileURLToPath(new URL("../../db.seed.json", import.meta.url));
 const CHAVE = "chave-de-teste-da-integracao";
+const SEGREDO = new TextEncoder().encode("segredo-de-teste-com-mais-de-32-caracteres");
 const ORIGEM = "http://localhost:3000";
 
 const loja = abrirLoja(null, SEMENTE);
@@ -17,7 +19,7 @@ beforeEach(() => {
   relogio = Date.now();
   app = criarAppCatalogo(
     loja,
-    { origens: [ORIGEM], apiKeys: [CHAVE], trustProxy: "loopback", reservaMinutos: 15, freteCentavos: 1990 },
+    { origens: [ORIGEM], apiKeys: [CHAVE], trustProxy: "loopback", reservaMinutos: 15, freteCentavos: 1990, jwtSegredo: SEGREDO },
     () => relogio,
   );
 });
@@ -153,7 +155,7 @@ describe("integração (X-API-Key)", () => {
   });
 
   it("sem API_KEYS configurado, a integração fica desligada (503)", async () => {
-    const semChave = criarAppCatalogo(loja, { origens: [ORIGEM], apiKeys: [], trustProxy: "loopback", reservaMinutos: 15, freteCentavos: 1990 });
+    const semChave = criarAppCatalogo(loja, { origens: [ORIGEM], apiKeys: [], trustProxy: "loopback", reservaMinutos: 15, freteCentavos: 1990, jwtSegredo: SEGREDO });
     await request(semChave).get("/integracao/pedidos").set("X-API-Key", "qualquer").expect(503);
   });
 });
@@ -184,6 +186,51 @@ describe("segurança HTTP", () => {
   });
 
   it("rota desconhecida: 404", async () => {
-    await request(app).get("/admin").expect(404);
+    await request(app).get("/rota-que-nao-existe").expect(404);
+  });
+});
+
+describe("painel do admin: anúncios (Módulo 05)", () => {
+  const como = async (perfil: string) => ({
+    Authorization: `Bearer ${await new SignJWT({ nome: "x", perfil }).setProtectedHeader({ alg: "HS256" }).setSubject("u-1").setExpirationTime("15m").sign(SEGREDO)}`,
+  });
+
+  it("quem não é administradora recebe 403; sem login, 401", async () => {
+    const peca = disponivel();
+    await request(app).get("/admin/pecas").set(await como("USUARIO")).expect(403);
+    await request(app).post(`/admin/pecas/${peca.id}/ocultar`).set(await como("ADMIN")).expect(403);
+    await request(app).get("/admin/pecas").expect(401);
+  });
+
+  it("ocultar tira o anúncio da vitrine, da página e da reserva; reexibir devolve", async () => {
+    const ludy = await como("ADMIN_MASTER");
+    const peca = disponivel();
+    await request(app).post(`/admin/pecas/${peca.id}/ocultar`).set(ludy).send({ motivo: "foto imprópria" }).expect(200);
+    expect((await request(app).get("/pecas")).body.map((p: { id: string }) => p.id)).not.toContain(peca.id);
+    await request(app).get(`/pecas/${peca.id}`).expect(404);
+    await request(app).post(`/pecas/${peca.id}/reservar`).expect(404);
+    const lista = (await request(app).get("/admin/pecas").set(ludy).expect(200)).body.pecas;
+    expect(lista.find((p: { id: string }) => p.id === peca.id)).toMatchObject({ oculta: true, motivoOculta: "foto imprópria", irregular: false });
+
+    await request(app).post(`/admin/pecas/${peca.id}/reexibir`).set(ludy).expect(200);
+    await request(app).get(`/pecas/${peca.id}`).expect(200);
+  });
+
+  it("anúncio em categoria não permitida (ex.: eletrônicos) é marcado irregular e não pode voltar à vitrine", async () => {
+    const ludy = await como("ADMIN_MASTER");
+    const peca = disponivel();
+    peca.categoria = "eletronicos"; // simula um anúncio irregular vindo do Módulo 02
+    const lista = (await request(app).get("/admin/pecas").set(ludy).expect(200)).body.pecas;
+    expect(lista.find((p: { id: string }) => p.id === peca.id).irregular).toBe(true);
+
+    const oculta = await request(app).post(`/admin/pecas/${peca.id}/ocultar`).set(ludy).expect(200);
+    expect(oculta.body.motivoOculta).toBe("fora das categorias permitidas");
+    const recusa = await request(app).post(`/admin/pecas/${peca.id}/reexibir`).set(ludy).expect(422);
+    expect(recusa.body.erro).toMatch(/categoria não permitida/);
+    await request(app).get(`/pecas/${peca.id}`).expect(404);
+  });
+
+  it("anúncio inexistente: 404", async () => {
+    await request(app).post("/admin/pecas/nao-existe/ocultar").set(await como("ADMIN_MASTER")).expect(404);
   });
 });
