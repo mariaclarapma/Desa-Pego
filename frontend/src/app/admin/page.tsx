@@ -1,13 +1,10 @@
 "use client";
 
-import { useRouter } from "next/navigation";
-import { useEffect, useRef } from "react";
 import { Painel } from "@/components/admin/Painel";
 import { ButtonLink } from "@/components/ui/Button";
 import { SectionHeading } from "@/components/ui/SectionHeading";
-import { renovarSessao } from "@/lib/api/contas";
 import { ROUTES } from "@/lib/routes";
-import { useSessao } from "@/lib/sessao";
+import { useSessaoObrigatoria } from "@/lib/useSessaoObrigatoria";
 
 /**
  * Painel da administração (Módulo 05). Rota privada: sem sessão vai para o login; quem não é
@@ -15,18 +12,7 @@ import { useSessao } from "@/lib/sessao";
  * é o backend, que responde 403 em todas as rotas do painel.
  */
 export default function AdminPage() {
-  const router = useRouter();
-  const sessao = useSessao((s) => s.sessao);
-  const definir = useSessao((s) => s.definir);
-  const jaTentou = useRef(false);
-
-  useEffect(() => {
-    if (sessao || jaTentou.current) return;
-    jaTentou.current = true;
-    renovarSessao()
-      .then(definir)
-      .catch(() => router.replace(ROUTES.entrar));
-  }, [sessao, definir, router]);
+  const sessao = useSessaoObrigatoria();
 
   if (!sessao) {
     return (

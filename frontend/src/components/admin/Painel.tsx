@@ -6,7 +6,6 @@ import { buttonClasses } from "@/components/ui/Button";
 import { SectionHeading } from "@/components/ui/SectionHeading";
 import {
   admin,
-  AdminErro,
   percentualParaPontosBase,
   pontosBaseParaTexto,
   TEXTO_STATUS,
@@ -17,9 +16,8 @@ import {
   type StatusPedido,
   type UsuariaAdmin,
 } from "@/lib/api/admin";
-import { renovarSessao } from "@/lib/api/contas";
 import { formatarPreco } from "@/lib/format";
-import { useSessao } from "@/lib/sessao";
+import { useChamadaAutenticada, type ChamadaAutenticada } from "@/lib/useChamadaAutenticada";
 
 const CARTAO = "rounded-[1.5rem] border-2 border-roxo bg-nevoa p-5 shadow-[6px_6px_0_0_var(--color-roxo)] sm:p-7";
 const TITULO = "font-display text-2xl font-medium tracking-[-0.02em] text-roxo";
@@ -40,28 +38,6 @@ const SECOES = [
 ] as const;
 
 const data = (iso: string) => new Date(iso).toLocaleDateString("pt-BR");
-
-/**
- * Executa uma chamada do painel com o token da sessão; se o token de 15 min vencer (401),
- * renova pelo cookie uma vez e tenta de novo.
- */
-function useChamada() {
-  const sessao = useSessao((s) => s.sessao);
-  const definir = useSessao((s) => s.definir);
-  return useCallback(
-    async <T,>(operacao: (token: string) => Promise<T>): Promise<T> => {
-      try {
-        return await operacao(sessao!.accessToken);
-      } catch (erro) {
-        if (!(erro instanceof AdminErro) || erro.status !== 401) throw erro;
-        const nova = await renovarSessao();
-        definir(nova);
-        return operacao(nova.accessToken);
-      }
-    },
-    [sessao, definir],
-  );
-}
 
 /** Seção do painel: título, aviso de sucesso/erro (lidos pelo leitor de tela) e conteúdo. */
 function Secao({ id, titulo, aviso, erro, children }: { id: string; titulo: string; aviso?: string; erro?: string; children: ReactNode }) {
@@ -107,7 +83,7 @@ function Tabela({ legenda, colunas, children }: { legenda: string; colunas: stri
 const mensagem = (erro: unknown) => (erro instanceof Error ? erro.message : "algo deu errado. tente de novo.");
 
 export function Painel() {
-  const chamar = useChamada();
+  const chamar = useChamadaAutenticada();
 
   return (
     <section className="bg-dots">
@@ -139,7 +115,7 @@ export function Painel() {
   );
 }
 
-type Chamar = ReturnType<typeof useChamada>;
+type Chamar = ChamadaAutenticada;
 
 function VisaoGeral({ chamar }: { chamar: Chamar }) {
   const [resumo, setResumo] = useState<Resumo | null>(null);

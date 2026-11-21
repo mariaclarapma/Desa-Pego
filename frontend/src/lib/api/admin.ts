@@ -5,34 +5,12 @@
  * - resumo, pedidos, comissão e repasses: pedidos (/api/gestao/admin/*)
  * Todas as rotas exigem o token da administradora master; quem não é recebe 403 do backend.
  */
-export class AdminErro extends Error {
-  constructor(
-    public status: number,
-    mensagem: string,
-  ) {
-    super(mensagem);
-  }
-}
+import { chamarComToken, ErroApi } from "./autenticado";
 
-async function chamar<T>(token: string, metodo: string, caminho: string, corpo?: unknown): Promise<T> {
-  let resposta: Response;
-  try {
-    resposta = await fetch(`/api${caminho}`, {
-      method: metodo,
-      cache: "no-store",
-      headers: { Authorization: `Bearer ${token}`, ...(corpo === undefined ? {} : { "Content-Type": "application/json" }) },
-      body: corpo === undefined ? undefined : JSON.stringify(corpo),
-    });
-  } catch {
-    throw new AdminErro(0, "não conseguimos falar com o servidor. verifique sua conexão.");
-  }
-  if (!resposta.ok) {
-    const dados = await resposta.json().catch(() => null);
-    const campos = dados?.campos ? Object.values(dados.campos as Record<string, string>)[0] : undefined;
-    throw new AdminErro(resposta.status, campos ?? dados?.erro ?? `erro ${resposta.status}.`);
-  }
-  return (await resposta.json()) as T;
-}
+/** Mesmo erro das outras rotas privadas (status HTTP + mensagem do backend). */
+export { ErroApi as AdminErro };
+
+const chamar = chamarComToken;
 
 export type StatusPedido = "AGUARDANDO_PAGAMENTO" | "PAGO" | "ENVIADO" | "ENTREGUE" | "CANCELADO";
 
