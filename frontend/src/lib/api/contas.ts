@@ -148,3 +148,35 @@ export async function comSessao<T>(sessao: Sessao, operacao: (token: string) => 
     return operacao(nova.accessToken);
   }
 }
+
+/* ------------------------------------------------------------------------------------------------
+ * Perfil de vendedora e chave Pix (Req. 002). A chave completa nunca volta do backend: só o tipo,
+ * a máscara e a data. Cadastrar ou trocar a chave pede a senha atual.
+ * ---------------------------------------------------------------------------------------------- */
+
+export type TipoChavePix = "cpf" | "email" | "telefone" | "aleatoria";
+
+export interface PerfilVendedora {
+  id: string;
+  /** null = a vitrine mostra o primeiro nome (`nomeNaVitrine`). */
+  nomePublico: string | null;
+  nomeNaVitrine: string;
+  cidade: string | null;
+  pix: { tipo: TipoChavePix; mascarada: string; atualizadaEm: string } | null;
+  /** Existe uma chave salva, mas ela não pode ser lida: a vendedora precisa cadastrar de novo. */
+  pixIndisponivel: boolean;
+}
+
+/** READ: nome público, cidade e a chave Pix mascarada da conta logada. */
+export const lerPerfilVendedora = (token: string) =>
+  chamar("conta", async () => (await requisitar<{ vendedora: PerfilVendedora }>("GET", "/auth/me/vendedora", undefined, token)).vendedora);
+
+/** UPDATE: nome público (vazio = primeiro nome) e cidade. */
+export const atualizarPerfilVendedora = (token: string, dados: { nomePublico: string; cidade: string }) =>
+  chamar("conta", async () => (await requisitar<{ vendedora: PerfilVendedora }>("PATCH", "/auth/me/vendedora", dados, token)).vendedora);
+
+/** UPDATE: cadastra ou troca a chave Pix. Devolve um token novo, que já libera a publicação de anúncios. */
+export const salvarChavePix = (token: string, dados: { tipo: TipoChavePix; chave: string; senhaAtual: string }) =>
+  chamar("conta", () =>
+    requisitar<{ vendedora: PerfilVendedora; accessToken: string; expiraEm: string }>("PUT", "/auth/me/pix", dados, token),
+  );

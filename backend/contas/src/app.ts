@@ -1,16 +1,27 @@
-import { randomUUID } from "node:crypto";
+import { randomBytes, randomUUID } from "node:crypto";
 import cookieParser from "cookie-parser";
 import express, { type NextFunction, type Request, type Response } from "express";
 import helmet from "helmet";
 import { z } from "zod";
+import { cifrarChavePix } from "../../comum/chave-pix.js";
 import { emailDuplicado, type Banco, type UsuarioRegistro } from "./banco.js";
 import { cors } from "../../comum/seguranca.js";
 import type { Config } from "./config.js";
 import { cifrarCpf, hashCpf } from "./cpf-cripto.js";
 import { LimiteTentativas } from "./limite.js";
+import { estadoChavePix, nomeNaVitrine, perfilPublico, temChavePixUtilizavel } from "./pix.js";
 import { conferirSenha, gerarHashSenha } from "./senhas.js";
 import { gerarTokenAcesso, gerarTokenRefresh, hashToken, lerTokenAcesso } from "./tokens.js";
-import { errosPorCampo, esquemaCadastro, esquemaExclusao, esquemaLogin, esquemaPerfil, esquemaSenha } from "./validacao.js";
+import {
+  errosPorCampo,
+  esquemaCadastro,
+  esquemaChavePix,
+  esquemaExclusao,
+  esquemaLogin,
+  esquemaPerfil,
+  esquemaSenha,
+  esquemaVendedora,
+} from "./validacao.js";
 
 const MINUTO = 60_000;
 const ERRO_CREDENCIAIS = "e-mail ou senha incorretos.";
@@ -29,11 +40,15 @@ const ERRO_BLOQUEADA = "esta conta está bloqueada. fale com a administração d
  * Serviço de contas (Módulo 01, Req. 001). Rotas em /auth:
  * POST /cadastro, POST /login, POST /refresh, POST /logout e o CRUD da própria conta:
  * GET /me, PATCH /me, PUT /me/senha e DELETE /me.
+ * Perfil de vendedora e chave Pix (Req. 002): GET/PATCH /me/vendedora, PUT /me/pix e o perfil
+ * público GET /vendedoras/:id.
  */
 export function criarApp(banco: Banco, config: Config, agora: () => number = Date.now) {
   // 5 erros em 15 min bloqueiam por 15 min (por e-mail e por IP); cadastro: 10 por hora por IP
   const falhasLogin = new LimiteTentativas(5, 15 * MINUTO, 15 * MINUTO, agora);
   const cadastros = new LimiteTentativas(config.cadastrosPorHora ?? 10, 60 * MINUTO, 60 * MINUTO, agora);
+  // Req. 002: chave que cifra as chaves Pix. lerConfig exige a de verdade quando o banco é persistente.
+  const pixSegredo = config.pixCriptoChave ?? randomBytes(32);
 
   const app = express();
   app.disable("x-powered-by");
@@ -44,6 +59,14 @@ export function criarApp(banco: Banco, config: Config, agora: () => number = Dat
   app.use(cors(config.origens));
   app.use(express.json({ limit: "10kb" }));
   app.use(cookieParser());
+
+  /** Token de acesso com o que os outros serviços precisam (inclui se a conta já tem chave Pix). */
+  const tokenAcesso = async (usuario: Pick<UsuarioRegistro, "id" | "nome" | "perfil">) =>
+    gerarTokenAcesso(
+      { sub: usuario.id, nome: usuario.nome, perfil: usuario.perfil, temChavePix: await temChavePixUtilizavel(banco, pixSegredo, usuario.id) },
+      config.jwtSegredo,
+      config.acessoMinutos,
+    );
 
   async function abrirSessao(res: Response, usuario: UsuarioRegistro) {
     const refresh = gerarTokenRefresh();
@@ -56,7 +79,7 @@ export function criarApp(banco: Banco, config: Config, agora: () => number = Dat
       path: config.cookiePath,
       expires: expira,
     });
-    const acesso = await gerarTokenAcesso({ sub: usuario.id, nome: usuario.nome, perfil: usuario.perfil }, config.jwtSegredo, config.acessoMinutos);
+    const acesso = await tokenAcesso(usuario);
     return { usuario: publico(usuario), accessToken: acesso.token, expiraEm: acesso.expiraEm };
   }
 
@@ -232,7 +255,7 @@ export function criarApp(banco: Banco, config: Config, agora: () => number = Dat
     }
     const atualizado = { ...usuario, nome, email };
     // o nome vai dentro do JWT: devolve um token de acesso novo (a sessão do cookie continua a mesma)
-    const acesso = await gerarTokenAcesso({ sub: usuario.id, nome, perfil: usuario.perfil }, config.jwtSegredo, config.acessoMinutos);
+    const acesso = await tokenAcesso({ ...usuario, nome });
     res.json({ usuario: publico(atualizado), accessToken: acesso.token, expiraEm: acesso.expiraEm });
   });
 
@@ -262,6 +285,63 @@ export function criarApp(banco: Banco, config: Config, agora: () => number = Dat
     await banco.excluirUsuario(usuario.id);
     limparCookie(res);
     res.status(204).end();
+  });
+
+  // ---- Perfil de vendedora e chave Pix (Req. 002). Sempre a conta do token: nunca um id da URL. ----
+
+  /** Dados privados da própria vendedora. A chave Pix sai só mascarada (ou indisponível, se não abrir). */
+  const perfilVendedora = async (usuario: UsuarioRegistro) => ({
+    id: usuario.id,
+    nomePublico: usuario.nome_publico || null,
+    nomeNaVitrine: nomeNaVitrine(usuario),
+    cidade: usuario.cidade ?? null,
+    ...estadoChavePix(await banco.chavePix(usuario.id), pixSegredo),
+  });
+
+  /** Respostas com dados da vendedora não ficam em cache (navegador ou proxy). */
+  const semCache = (_req: Request, res: Response, next: NextFunction) => {
+    res.set("Cache-Control", "no-store");
+    next();
+  };
+
+  // READ: perfil de vendedora (nome público, cidade e a chave Pix mascarada)
+  rotas.get("/me/vendedora", autenticado, semCache, async (_req, res) => {
+    res.json({ vendedora: await perfilVendedora(res.locals.usuario) });
+  });
+
+  // UPDATE: nome público e cidade
+  rotas.patch("/me/vendedora", autenticado, semCache, async (req, res) => {
+    const usuario: UsuarioRegistro = res.locals.usuario;
+    const dados = esquemaVendedora.safeParse(req.body);
+    if (!dados.success) return erroValidacao(res, dados.error);
+    const { nomePublico, cidade } = dados.data;
+    await banco.atualizarPerfilVendedora(usuario.id, nomePublico, cidade);
+    res.json({ vendedora: await perfilVendedora({ ...usuario, nome_publico: nomePublico, cidade }) });
+  });
+
+  // UPDATE: cadastra ou troca a chave Pix. Pede a senha atual: trocar a chave muda para onde vai o dinheiro.
+  rotas.put("/me/pix", autenticado, semCache, async (req, res) => {
+    const usuario: UsuarioRegistro = res.locals.usuario;
+    const dados = esquemaChavePix.safeParse(req.body);
+    if (!dados.success) return erroValidacao(res, dados.error);
+    if (!(await reautenticar(res, usuario, dados.data.senhaAtual, "senhaAtual"))) return;
+
+    const { tipo, chave } = dados.data;
+    await banco.salvarChavePix(usuario.id, tipo, cifrarChavePix(chave, pixSegredo, usuario.id));
+    // token novo com temChavePix: true, para a vendedora já poder anunciar sem entrar de novo
+    const acesso = await tokenAcesso(usuario);
+    res.json({ vendedora: await perfilVendedora(usuario), accessToken: acesso.token, expiraEm: acesso.expiraEm });
+  });
+
+  // Perfil público da vendedora (vitrine): sem e-mail, sem documento e sem chave Pix.
+  // Só existe para quem já é vendedora (tem chave Pix) e não está bloqueada.
+  rotas.get("/vendedoras/:id", async (req, res) => {
+    const id = z.string().uuid().safeParse(req.params.id);
+    const usuario = id.success ? await banco.usuarioPorId(id.data) : undefined;
+    if (!usuario || usuario.bloqueada || !(await temChavePixUtilizavel(banco, pixSegredo, usuario.id))) {
+      return res.status(404).json({ erro: "vendedora não encontrada." });
+    }
+    res.json({ vendedora: perfilPublico(usuario) });
   });
 
   // ---- Painel do admin (Módulo 05): usuárias. Só a administradora master. ----

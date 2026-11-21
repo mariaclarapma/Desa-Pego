@@ -4,12 +4,20 @@ import { lerConfig } from "./config.js";
 const SEGREDO = "um-segredo-de-producao-com-mais-de-32-caracteres";
 const ORIGENS = "https://desapego.onrender.com";
 const CPF = { CPF_CRIPTO_CHAVE: "chave-de-cifra-do-cpf-com-mais-de-32-caracteres", CPF_HASH_CHAVE: "chave-de-hash-do-cpf-com-mais-de-32-caracteres" };
+const PIX = Buffer.alloc(32, 7).toString("base64");
 
 describe("lerConfig", () => {
   it("em produção exige JWT_SECRET forte e DATABASE_URL", () => {
     expect(() => lerConfig({ NODE_ENV: "production", CORS_ORIGENS: ORIGENS, DATABASE_URL: "postgresql://u:s@h/db" })).toThrow(/JWT_SECRET/);
     expect(() => lerConfig({ NODE_ENV: "production", CORS_ORIGENS: ORIGENS, JWT_SECRET: SEGREDO })).toThrow(/DATABASE_URL/);
-    const config = lerConfig({ NODE_ENV: "production", CORS_ORIGENS: ORIGENS, JWT_SECRET: SEGREDO, DATABASE_URL: "postgresql://u:s@h/db", ...CPF });
+    const config = lerConfig({
+      NODE_ENV: "production",
+      CORS_ORIGENS: ORIGENS,
+      JWT_SECRET: SEGREDO,
+      DATABASE_URL: "postgresql://u:s@h/db",
+      ...CPF,
+      PIX_CRIPTO_CHAVE: PIX,
+    });
     expect(config.urlBanco).toBe("postgresql://u:s@h/db");
     expect(config.cookieSeguro).toBe(true);
     expect(config.origens).toEqual([ORIGENS]);
@@ -22,7 +30,8 @@ describe("lerConfig", () => {
   });
 
   it("chaves do CPF: obrigatórias com banco persistente; temporárias só com banco em memória (Req. 001)", () => {
-    const base = { NODE_ENV: "production", CORS_ORIGENS: ORIGENS, JWT_SECRET: SEGREDO, DATABASE_URL: "postgresql://u:s@h/db" };
+    // a PIX_CRIPTO_CHAVE (Req. 002) vai junto: aqui o assunto são só as chaves do CPF
+    const base = { NODE_ENV: "production", CORS_ORIGENS: ORIGENS, JWT_SECRET: SEGREDO, DATABASE_URL: "postgresql://u:s@h/db", PIX_CRIPTO_CHAVE: PIX };
     expect(() => lerConfig(base)).toThrow(/CPF_CRIPTO_CHAVE e CPF_HASH_CHAVE/);
     expect(() => lerConfig({ ...base, CPF_CRIPTO_CHAVE: CPF.CPF_CRIPTO_CHAVE })).toThrow(/CPF_HASH_CHAVE/);
     expect(() => lerConfig({ ...base, ...CPF, CPF_HASH_CHAVE: "curta" })).toThrow(/32 caracteres/);
@@ -40,6 +49,17 @@ describe("lerConfig", () => {
 
     // banco em memória: chaves aleatórias
     expect(lerConfig({}).cpf.hash).toHaveLength(32);
+  });
+
+  it("PIX_CRIPTO_CHAVE: obrigatória com banco persistente; temporária só com banco em memória (Req. 002)", () => {
+    // as chaves do CPF (Req. 001) vão junto: aqui o assunto é só a chave Pix
+    const base = { NODE_ENV: "production", CORS_ORIGENS: ORIGENS, JWT_SECRET: SEGREDO, DATABASE_URL: "postgresql://u:s@h/db", ...CPF };
+    expect(() => lerConfig(base)).toThrow(/PIX_CRIPTO_CHAVE/);
+    // desenvolvimento com Supabase também exige: senão as chaves salvas ficariam ilegíveis ao reiniciar
+    expect(() => lerConfig({ DATABASE_URL: "postgresql://u:s@h/db", ...CPF })).toThrow(/PIX_CRIPTO_CHAVE/);
+    expect(() => lerConfig({ ...base, PIX_CRIPTO_CHAVE: "curta" })).toThrow(/32 bytes/);
+    expect(lerConfig({ ...base, PIX_CRIPTO_CHAVE: PIX }).pixCriptoChave).toEqual(Buffer.alloc(32, 7));
+    expect(lerConfig({}).pixCriptoChave).toHaveLength(32);
   });
 
   it("TRUST_PROXY: padrão loopback; número vira saltos; lista passa como texto", () => {
