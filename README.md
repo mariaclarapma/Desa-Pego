@@ -355,6 +355,9 @@ Os endpoints estão documentados em [`docs/openapi.yaml`](docs/openapi.yaml).
 - Uma transição fora da tabela responde **409**.
 - Quem não participa do pedido, ou tenta a ação da outra parte, recebe **403**.
 - O endereço de entrega só aparece para a vendedora.
+- **Telas `/conta/compras` e `/conta/vendas`:** lista com filtro por status, linha do tempo do pedido e o botão de cada
+  parte (marcar como enviado ou confirmar recebimento), que só aparece quando a ação é permitida e pede confirmação.
+  As vendas mostram o endereço e quanto a vendedora recebe.
 
 **Dinheiro.**
 - Os valores ficam em centavos inteiros, e a comissão em pontos-base (1000 = 10,00%), também inteira.
@@ -391,6 +394,7 @@ quem não é a administradora master.
 | `backend/catalogo/src/app.test.ts` | admin oculta anúncio; anúncio em categoria não permitida (ex.: eletrônicos) é recusado |
 | `backend/contas/src/admin.test.ts` | seed da master, master protegida, bloqueio de contas, 403 no painel |
 | `frontend/src/app/admin/page.test.tsx` e `frontend/cypress/e2e/admin.cy.ts` | tela do painel, acesso restrito e auditoria de acessibilidade |
+| `frontend/src/components/pedidos/ListaDePedidos.test.tsx` e `frontend/cypress/e2e/compras-vendas.cy.ts` | telas de compras e vendas (Req. 013): da compra paga ao recebimento, endereço só para a vendedora, 403 para quem não participa |
 
 ```bash
 npm test -w backend   # testes do backend, incluindo o Req. 015
