@@ -13,6 +13,7 @@ export const ROUTES = {
   recuperarSenha: "/recuperar-senha",
   conta: "/conta",
   minhasCompras: "/conta/compras",
+  minhasVendas: "/conta/vendas",
   meusAnuncios: "/conta/anuncios",
   carteira: "/conta/carteira",
   admin: "/admin",
