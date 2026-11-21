@@ -30,6 +30,8 @@ const env = {
 delete env.ELECTRON_RUN_AS_NODE;
 env.CYPRESS_ADMIN_EMAIL = env.ADMIN_MASTER_EMAIL;
 env.CYPRESS_ADMIN_SENHA = env.ADMIN_MASTER_PASSWORD;
+// a primeira API key: o teste de compras e vendas cria pedidos pela rota interna, como o checkout fará
+env.CYPRESS_API_KEY = env.API_KEYS.split(",")[0];
 const rodar = (comando) => execSync(comando, { stdio: "inherit", env });
 
 copyFileSync("backend/db.seed.json", "backend/db.json"); // catálogo sempre no estado inicial
