@@ -20,6 +20,7 @@ import {
 import { reaisParaCentavos } from "@/lib/api/carteira";
 import { CATEGORIAS } from "@/data/demo/catalogo";
 import { CONDICAO_LABEL, formatarPreco } from "@/lib/format";
+import { DashboardVendasPainel } from "./Dashboard";
 import { useChamadaAutenticada, type ChamadaAutenticada } from "@/lib/useChamadaAutenticada";
 
 const CARTAO = "rounded-[1.5rem] border-2 border-roxo bg-nevoa p-5 shadow-[6px_6px_0_0_var(--color-roxo)] sm:p-7";
@@ -33,6 +34,7 @@ const STATUS_PEDIDO = Object.keys(TEXTO_STATUS) as StatusPedido[];
 
 const SECOES = [
   ["visao-geral", "visão geral"],
+  ["vendas", "painel de vendas"],
   ["usuarias", "usuárias"],
   ["anuncios", "anúncios"],
   ["pedidos", "pedidos"],
@@ -114,6 +116,9 @@ export function Painel() {
         </nav>
 
         <VisaoGeral chamar={chamar} />
+        <Secao id="vendas" titulo="painel de vendas">
+          <DashboardVendasPainel chamar={chamar} />
+        </Secao>
         <Usuarias chamar={chamar} />
         <Anuncios chamar={chamar} />
         <Pedidos chamar={chamar} />
