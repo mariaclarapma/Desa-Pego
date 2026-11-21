@@ -36,7 +36,7 @@ export function exigirLogin(segredo: Uint8Array) {
   };
 }
 
-/** Só a administradora master (Ludy). Use depois de exigirLogin. Quem não é recebe 403. */
+/** Só a administradora master (Lucy). Use depois de exigirLogin. Quem não é recebe 403. */
 export function exigirAdminMaster(req: Request, res: Response, next: NextFunction) {
   if ((res.locals.usuaria as Autenticada | undefined)?.perfil !== "ADMIN_MASTER") {
     return res.status(403).json({ erro: "acesso restrito à administração." });

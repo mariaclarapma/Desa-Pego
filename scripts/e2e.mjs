@@ -19,8 +19,8 @@ const env = {
   API_KEYS: process.env.API_KEYS || segredo(),
   CORS_ORIGENS: "http://localhost:3000",
   // administradora master só dos testes (senha aleatória a cada execução); o Cypress recebe pelo CYPRESS_*
-  ADMIN_MASTER_EMAIL: "ludy-e2e@desapego.test",
-  ADMIN_MASTER_PASSWORD: `Ludy${randomBytes(9).toString("hex")}1`,
+  ADMIN_MASTER_EMAIL: "lucy-e2e@desapego.test",
+  ADMIN_MASTER_PASSWORD: `Lucy${randomBytes(9).toString("hex")}1`,
   // a suíte cria várias contas do mesmo IP; em produção o limite continua 10 por hora
   LIMITE_CADASTROS_POR_HORA: "200",
   PORT: "3000",
