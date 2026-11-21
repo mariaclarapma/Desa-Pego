@@ -224,7 +224,7 @@ Requer **Node.js 22.13 ou mais novo**.
 
 ```bash
 npm install        # instala frontend e backend
-npm run gerar-env  # cria o .env com JWT_SECRET e API_KEYS aleatórios (só na primeira vez)
+npm run gerar-env  # cria o .env com JWT_SECRET, API_KEYS e PIX_CRIPTO_CHAVE aleatórios (só na primeira vez)
 npm run dev        # site em http://localhost:3000 · catálogo :3001 · contas :3002 · pedidos :3003
 ```
 
@@ -248,6 +248,7 @@ Render.
 | --- | --- | --- | --- |
 | `JWT_SECRET` | assina os tokens de acesso (32+ caracteres) | gerado a cada início | **obrigatório** |
 | `API_KEYS` | chaves aceitas no `X-API-Key` das rotas de integração (separadas por vírgula) | sem chave, a integração fica desligada | gerada pelo Render |
+| `PIX_CRIPTO_CHAVE` | cifra as chaves Pix das vendedoras no banco (32 bytes em base64). **Nunca troque nem perca**: guarde no cofre de senhas ([docs/CHAVE-PIX.md](docs/CHAVE-PIX.md)) | temporária se o banco for em memória; **obrigatória** com `DATABASE_URL` | **obrigatório**, no painel do Render |
 | `CORS_ORIGENS` | origens do frontend liberadas no CORS (separadas por vírgula) | `http://localhost:3000` | **obrigatório** |
 | `DATABASE_URL` | PostgreSQL das contas e dos pedidos (Supabase; schemas `contas` e `pedidos`) | vazio = banco em memória | **obrigatório** |
 | `ADMIN_MASTER_EMAIL`, `ADMIN_MASTER_PASSWORD` | conta da administradora master (Ludy), criada ou promovida ao iniciar | sem elas, não há master | no painel do Render |

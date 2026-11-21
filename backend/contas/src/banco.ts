@@ -1,4 +1,5 @@
 import type pg from "pg";
+import type { TipoChavePix } from "../../comum/chave-pix.js";
 import { conectar, iso, validarSchema } from "../../comum/postgres.js";
 
 /**
@@ -20,6 +21,17 @@ export interface UsuarioRegistro {
   /** Conta bloqueada pela administração: não entra nem renova a sessão. */
   bloqueada: boolean;
   criado_em: string;
+  /** Perfil de vendedora (Req. 002): nome mostrado na vitrine e cidade. Vazios até a pessoa preencher. */
+  nome_publico?: string | null;
+  cidade?: string | null;
+}
+
+/** Chave Pix da vendedora (Req. 002): só a cifra fica no banco (veja comum/chave-pix.ts). */
+export interface ChavePixRegistro {
+  usuario_id: string;
+  tipo: TipoChavePix;
+  chave_cifrada: string;
+  atualizada_em: string;
 }
 
 export interface SessaoRegistro {
@@ -57,7 +69,9 @@ export async function abrirBanco(url?: string, schema = "contas") {
       senha_hash TEXT NOT NULL,
       perfil TEXT NOT NULL DEFAULT 'USUARIO' CHECK (perfil IN ('USUARIO', 'ADMIN', 'ADMIN_MASTER')),
       bloqueada BOOLEAN NOT NULL DEFAULT false,
-      criado_em TIMESTAMPTZ NOT NULL DEFAULT now()
+      criado_em TIMESTAMPTZ NOT NULL DEFAULT now(),
+      nome_publico TEXT,
+      cidade TEXT
     )`);
   await db.query(`
     CREATE TABLE IF NOT EXISTS ${s}.sessoes (
@@ -69,9 +83,20 @@ export async function abrirBanco(url?: string, schema = "contas") {
       criado_em TIMESTAMPTZ NOT NULL DEFAULT now()
     )`);
   await db.query(`CREATE INDEX IF NOT EXISTS sessoes_usuario ON ${s}.sessoes (usuario_id)`);
+  // Req. 002: uma chave Pix por conta, só cifrada; some junto com a conta
+  await db.query(`
+    CREATE TABLE IF NOT EXISTS ${s}.chaves_pix (
+      usuario_id TEXT PRIMARY KEY REFERENCES ${s}.usuarios(id) ON DELETE CASCADE,
+      tipo TEXT NOT NULL CHECK (tipo IN ('cpf', 'email', 'telefone', 'aleatoria')),
+      chave_cifrada TEXT NOT NULL,
+      atualizada_em TIMESTAMPTZ NOT NULL DEFAULT now()
+    )`);
   if (!memoria) {
     // migração das tabelas criadas antes do Módulo 05 (perfil ADMIN_MASTER e bloqueio de conta)
     await db.query(`ALTER TABLE ${s}.usuarios ADD COLUMN IF NOT EXISTS bloqueada BOOLEAN NOT NULL DEFAULT false`);
+    // migração do Req. 002 (perfil de vendedora): colunas opcionais, as contas antigas seguem iguais
+    await db.query(`ALTER TABLE ${s}.usuarios ADD COLUMN IF NOT EXISTS nome_publico TEXT`);
+    await db.query(`ALTER TABLE ${s}.usuarios ADD COLUMN IF NOT EXISTS cidade TEXT`);
     await db.query(`ALTER TABLE ${s}.usuarios DROP CONSTRAINT IF EXISTS usuarios_perfil_check`);
     await db.query(
       `ALTER TABLE ${s}.usuarios ADD CONSTRAINT usuarios_perfil_check CHECK (perfil IN ('USUARIO', 'ADMIN', 'ADMIN_MASTER'))`,
@@ -82,11 +107,13 @@ export async function abrirBanco(url?: string, schema = "contas") {
     // authenticated) não leem nada. O dono das tabelas (o serviço) não é afetado.
     await db.query(`ALTER TABLE ${s}.usuarios ENABLE ROW LEVEL SECURITY`);
     await db.query(`ALTER TABLE ${s}.sessoes ENABLE ROW LEVEL SECURITY`);
+    await db.query(`ALTER TABLE ${s}.chaves_pix ENABLE ROW LEVEL SECURITY`);
   }
 
   const usuario = (r?: pg.QueryResultRow) => (r ? ({ ...r, criado_em: iso(r.criado_em) } as UsuarioRegistro) : undefined);
   const sessao = (r?: pg.QueryResultRow) =>
     r ? ({ ...r, expira_em: iso(r.expira_em), revogada_em: iso(r.revogada_em) } as SessaoRegistro) : undefined;
+  const chavePix = (r?: pg.QueryResultRow) => (r ? ({ ...r, atualizada_em: iso(r.atualizada_em) } as ChavePixRegistro) : undefined);
   const agora = () => new Date().toISOString();
   const um = async (sql: string, valores: unknown[]) => (await db.query(sql, valores)).rows[0];
 
@@ -124,6 +151,23 @@ export async function abrirBanco(url?: string, schema = "contas") {
     async atualizarPerfil(id: string, nome: string, email: string) {
       await db.query(`UPDATE ${s}.usuarios SET nome = $1, email = $2 WHERE id = $3`, [nome, email, id]);
     },
+    /** Perfil de vendedora (Req. 002): nome público (null = usa o primeiro nome) e cidade. */
+    async atualizarPerfilVendedora(id: string, nomePublico: string | null, cidade: string) {
+      // texto vazio nunca vai para o banco: sem nome público é sempre NULL
+      await db.query(`UPDATE ${s}.usuarios SET nome_publico = $1, cidade = $2 WHERE id = $3`, [nomePublico?.trim() || null, cidade, id]);
+    },
+    chavePix: async (usuarioId: string) =>
+      chavePix(await um(`SELECT * FROM ${s}.chaves_pix WHERE usuario_id = $1`, [usuarioId])),
+    /** Cadastra ou substitui a chave Pix da conta (uma por conta). Recebe só a cifra. */
+    async salvarChavePix(usuarioId: string, tipo: TipoChavePix, chaveCifrada: string) {
+      const quando = agora();
+      await db.query(
+        `INSERT INTO ${s}.chaves_pix (usuario_id, tipo, chave_cifrada, atualizada_em) VALUES ($1, $2, $3, $4)
+         ON CONFLICT (usuario_id) DO UPDATE SET tipo = EXCLUDED.tipo, chave_cifrada = EXCLUDED.chave_cifrada, atualizada_em = EXCLUDED.atualizada_em`,
+        [usuarioId, tipo, chaveCifrada, quando],
+      );
+      return quando;
+    },
     async atualizarSenha(id: string, senhaHash: string) {
       await db.query(`UPDATE ${s}.usuarios SET senha_hash = $1 WHERE id = $2`, [senhaHash, id]);
     },
@@ -133,6 +177,7 @@ export async function abrirBanco(url?: string, schema = "contas") {
     },
     /** Só para os testes: apaga todas as contas e sessões. */
     async limpar() {
+      await db.query(`DELETE FROM ${s}.chaves_pix`);
       await db.query(`DELETE FROM ${s}.sessoes`);
       await db.query(`DELETE FROM ${s}.usuarios`);
     },

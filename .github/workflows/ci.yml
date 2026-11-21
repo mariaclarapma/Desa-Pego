@@ -87,6 +87,7 @@ jobs:
         run: |
           export JWT_SECRET="$(openssl rand -base64 48)"
           export API_KEYS="$(openssl rand -hex 24)"
+          export PIX_CRIPTO_CHAVE="$(openssl rand -base64 32)"
           export CORS_ORIGENS="http://localhost:4000"
           npm start > start.log 2>&1 &
           for i in $(seq 1 60); do

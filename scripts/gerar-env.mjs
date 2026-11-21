@@ -1,4 +1,5 @@
-// Cria o .env de desenvolvimento a partir do .env.example, com JWT_SECRET e API_KEYS aleatórios.
+// Cria o .env de desenvolvimento a partir do .env.example, com JWT_SECRET, API_KEYS e
+// PIX_CRIPTO_CHAVE aleatórios.
 // Não sobrescreve um .env que já existe.
 import { randomBytes } from "node:crypto";
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
@@ -11,6 +12,8 @@ if (existsSync(destino)) {
 const segredo = () => randomBytes(32).toString("base64url");
 const conteudo = readFileSync(new URL("../.env.example", import.meta.url), "utf8")
   .replace(/^JWT_SECRET=$/m, `JWT_SECRET=${segredo()}`)
-  .replace(/^API_KEYS=$/m, `API_KEYS=${segredo()}`);
+  .replace(/^API_KEYS=$/m, `API_KEYS=${segredo()}`)
+  // 32 bytes em base64 (AES-256): cifra as chaves Pix. Veja docs/CHAVE-PIX.md
+  .replace(/^PIX_CRIPTO_CHAVE=$/m, `PIX_CRIPTO_CHAVE=${randomBytes(32).toString("base64")}`);
 writeFileSync(destino, conteudo);
-console.log(".env criado com JWT_SECRET e API_KEYS aleatórios.");
+console.log(".env criado com JWT_SECRET, API_KEYS e PIX_CRIPTO_CHAVE aleatórios.");
