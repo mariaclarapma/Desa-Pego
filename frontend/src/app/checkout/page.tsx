@@ -6,7 +6,7 @@ import { buttonClasses } from "@/components/ui/Button";
 import { SectionHeading } from "@/components/ui/SectionHeading";
 import { buscarPeca } from "@/lib/api/catalogo";
 import { criarPedido } from "@/lib/api/pedidos";
-import { FRETE_FIXO_CENTAVOS } from "@/lib/config";
+import { useFrete } from "@/lib/useFrete";
 import { formatarPreco } from "@/lib/format";
 import { pedidoUrl, ROUTES } from "@/lib/routes";
 import { subtotalSacola, useSacola } from "@/lib/sacola";
@@ -33,6 +33,7 @@ export default function CheckoutPage() {
   const router = useRouter();
   const { itens, esvaziar, removerExpirados } = useSacola();
   const [montado, setMontado] = useState(false);
+  const frete = useFrete();
   const [dados, setDados] = useState(VAZIO);
   const [buscandoCep, setBuscandoCep] = useState(false);
   const [enviando, setEnviando] = useState(false);
@@ -164,11 +165,11 @@ export default function CheckoutPage() {
         <dl className="space-y-1 border-t-2 border-roxo/20 pt-3 text-sm">
           <div className="flex justify-between">
             <dt>frete fixo</dt>
-            <dd>{formatarPreco(FRETE_FIXO_CENTAVOS)}</dd>
+            <dd>{formatarPreco(frete)}</dd>
           </div>
           <div className="flex justify-between text-base font-bold">
             <dt>total</dt>
-            <dd>{formatarPreco(subtotal + FRETE_FIXO_CENTAVOS)}</dd>
+            <dd>{formatarPreco(subtotal + frete)}</dd>
           </div>
         </dl>
         {erro ? (

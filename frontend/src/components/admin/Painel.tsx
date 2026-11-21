@@ -10,13 +10,16 @@ import {
   pontosBaseParaTexto,
   TEXTO_STATUS,
   type AnuncioAdmin,
+  type FaixaPreco,
   type PedidoAdmin,
   type RepasseAdmin,
   type Resumo,
   type StatusPedido,
   type UsuariaAdmin,
 } from "@/lib/api/admin";
-import { formatarPreco } from "@/lib/format";
+import { reaisParaCentavos } from "@/lib/api/carteira";
+import { CATEGORIAS } from "@/data/demo/catalogo";
+import { CONDICAO_LABEL, formatarPreco } from "@/lib/format";
 import { useChamadaAutenticada, type ChamadaAutenticada } from "@/lib/useChamadaAutenticada";
 
 const CARTAO = "rounded-[1.5rem] border-2 border-roxo bg-nevoa p-5 shadow-[6px_6px_0_0_var(--color-roxo)] sm:p-7";
@@ -34,8 +37,14 @@ const SECOES = [
   ["anuncios", "anúncios"],
   ["pedidos", "pedidos"],
   ["comissao", "comissão"],
+  ["taxa-pix", "taxa do Pix"],
+  ["frete", "frete"],
+  ["precos", "preço sugerido"],
   ["repasses", "repasses"],
 ] as const;
+
+/** Centavos → texto do campo em reais ("19,90"). */
+const centavosParaTexto = (c: number) => (c / 100).toFixed(2).replace(".", ",");
 
 const data = (iso: string) => new Date(iso).toLocaleDateString("pt-BR");
 
@@ -109,6 +118,9 @@ export function Painel() {
         <Anuncios chamar={chamar} />
         <Pedidos chamar={chamar} />
         <Comissao chamar={chamar} />
+        <TaxaPix chamar={chamar} />
+        <Frete chamar={chamar} />
+        <PrecosSugeridos chamar={chamar} />
         <Repasses chamar={chamar} />
       </div>
     </section>
@@ -137,6 +149,9 @@ function VisaoGeral({ chamar }: { chamar: Chamar }) {
             <dt className="text-xs font-bold tracking-[0.18em] text-violeta uppercase">comissão da plataforma</dt>
             <dd className="mt-1 text-2xl font-semibold">{formatarPreco(resumo.vendas.comissaoCentavos)}</dd>
             <dd className="text-sm text-roxo-soft">percentual atual: {pontosBaseParaTexto(resumo.comissaoPontosBase)}</dd>
+            <dd className="text-sm text-roxo-soft">
+              taxa do Pix: {formatarPreco(resumo.vendas.taxaPixCentavos)} ({pontosBaseParaTexto(resumo.taxaPixPontosBase)})
+            </dd>
           </div>
           <div>
             <dt className="text-xs font-bold tracking-[0.18em] text-violeta uppercase">repasses</dt>
@@ -401,6 +416,224 @@ function Comissao({ chamar }: { chamar: Chamar }) {
         </div>
         <button type="submit" className={buttonClasses("violeta", "md")}>
           salvar comissão
+        </button>
+      </form>
+    </Secao>
+  );
+}
+
+/** Formulário de um valor só (taxa ou frete): campo, dica e botão salvar. */
+function FormValor({
+  id,
+  rotulo,
+  dica,
+  botao,
+  texto,
+  mudar,
+  salvar,
+}: {
+  id: string;
+  rotulo: string;
+  dica: string;
+  botao: string;
+  texto: string;
+  mudar: (v: string) => void;
+  salvar: (e: FormEvent) => void;
+}) {
+  return (
+    <form onSubmit={salvar} noValidate className="flex flex-col gap-3 sm:flex-row sm:items-end">
+      <div className="max-w-xs flex-1">
+        <label htmlFor={id} className={ROTULO}>
+          {rotulo}
+        </label>
+        <input id={id} inputMode="decimal" className={CAMPO} value={texto} aria-describedby={`dica-${id}`} onChange={(e) => mudar(e.target.value)} />
+        <p id={`dica-${id}`} className="mt-1 text-xs text-roxo-soft">
+          {dica}
+        </p>
+      </div>
+      <button type="submit" className={buttonClasses("violeta", "md")}>
+        {botao}
+      </button>
+    </form>
+  );
+}
+
+function TaxaPix({ chamar }: { chamar: Chamar }) {
+  const [atual, setAtual] = useState<number | null>(null);
+  const [texto, setTexto] = useState("");
+  const [aviso, setAviso] = useState("");
+  const [erro, setErro] = useState("");
+  useEffect(() => {
+    chamar(admin.configuracao).then(
+      (r) => {
+        setAtual(r.taxaPixPontosBase);
+        setTexto(pontosBaseParaTexto(r.taxaPixPontosBase).replace("%", ""));
+      },
+      (e) => setErro(mensagem(e)),
+    );
+  }, [chamar]);
+
+  async function salvar(e: FormEvent) {
+    e.preventDefault();
+    setAviso("");
+    setErro("");
+    const pb = percentualParaPontosBase(texto);
+    if (pb === null || pb > 1000) {
+      setErro("informe um percentual entre 0 e 10, com até duas casas decimais (ex.: 0,99).");
+      return document.getElementById("campo-taxa-pix")?.focus();
+    }
+    try {
+      const r = await chamar((t) => admin.definirTaxaPix(t, pb));
+      setAtual(r.taxaPixPontosBase);
+      setAviso(`taxa do Pix alterada para ${pontosBaseParaTexto(r.taxaPixPontosBase)}. vale só para os pedidos novos.`);
+    } catch (falha) {
+      setErro(mensagem(falha));
+    }
+  }
+
+  return (
+    <Secao id="taxa-pix" titulo="taxa do Pix" aviso={aviso} erro={erro}>
+      <p className="mb-4 text-sm text-roxo-soft">
+        percentual atual: <strong className="text-roxo">{atual === null ? "…" : pontosBaseParaTexto(atual)}</strong>, cobrado sobre o
+        total pago (peças + frete) e descontado da parte da vendedora. como a comissão, vale só para pedidos novos.
+      </p>
+      <FormValor
+        id="campo-taxa-pix"
+        rotulo="nova taxa do Pix (%)"
+        dica="de 0 a 10, com até duas casas decimais."
+        botao="salvar taxa"
+        texto={texto}
+        mudar={setTexto}
+        salvar={salvar}
+      />
+    </Secao>
+  );
+}
+
+function Frete({ chamar }: { chamar: Chamar }) {
+  const [atual, setAtual] = useState<number | null>(null);
+  const [texto, setTexto] = useState("");
+  const [aviso, setAviso] = useState("");
+  const [erro, setErro] = useState("");
+  useEffect(() => {
+    chamar(admin.frete).then(
+      (r) => {
+        setAtual(r.freteCentavos);
+        setTexto(centavosParaTexto(r.freteCentavos));
+      },
+      (e) => setErro(mensagem(e)),
+    );
+  }, [chamar]);
+
+  async function salvar(e: FormEvent) {
+    e.preventDefault();
+    setAviso("");
+    setErro("");
+    const centavos = reaisParaCentavos(texto);
+    if (centavos === null || centavos > 20_000) {
+      setErro("informe um valor entre R$ 0,00 e R$ 200,00 (ex.: 19,90).");
+      return document.getElementById("campo-frete")?.focus();
+    }
+    try {
+      const r = await chamar((t) => admin.definirFrete(t, centavos));
+      setAtual(r.freteCentavos);
+      setAviso(`frete alterado para ${formatarPreco(r.freteCentavos)}. vale para os pedidos novos.`);
+    } catch (falha) {
+      setErro(mensagem(falha));
+    }
+  }
+
+  return (
+    <Secao id="frete" titulo="frete fixo" aviso={aviso} erro={erro}>
+      <p className="mb-4 text-sm text-roxo-soft">
+        frete atual: <strong className="text-roxo">{atual === null ? "…" : formatarPreco(atual)}</strong>. é cobrado em cada pedido e
+        vai para a vendedora, que faz o envio. pedidos já feitos guardam o frete deles.
+      </p>
+      <FormValor id="campo-frete" rotulo="novo frete (R$)" dica="de 0 a 200 reais." botao="salvar frete" texto={texto} mudar={setTexto} salvar={salvar} />
+    </Secao>
+  );
+}
+
+type LinhaPreco = { categoria: FaixaPreco["categoria"]; condicao: FaixaPreco["condicao"]; minimo: string; maximo: string };
+
+const nomeCategoria = (slug: string) => CATEGORIAS.find((c) => c.slug === slug)?.nome ?? slug;
+
+function PrecosSugeridos({ chamar }: { chamar: Chamar }) {
+  const [linhas, setLinhas] = useState<LinhaPreco[]>([]);
+  const [aviso, setAviso] = useState("");
+  const [erro, setErro] = useState("");
+  const paraLinhas = (faixas: FaixaPreco[]) =>
+    faixas.map((f) => ({ categoria: f.categoria, condicao: f.condicao, minimo: centavosParaTexto(f.minimoCentavos), maximo: centavosParaTexto(f.maximoCentavos) }));
+
+  useEffect(() => {
+    chamar(admin.configuracao).then((r) => setLinhas(paraLinhas(r.precosSugeridos)), (e) => setErro(mensagem(e)));
+  }, [chamar]);
+
+  const mudar = (i: number, campo: "minimo" | "maximo", valor: string) =>
+    setLinhas((atuais) => atuais.map((l, j) => (j === i ? { ...l, [campo]: valor } : l)));
+
+  async function salvar(e: FormEvent) {
+    e.preventDefault();
+    setAviso("");
+    setErro("");
+    const faixas: FaixaPreco[] = [];
+    for (const [i, l] of linhas.entries()) {
+      const minimoCentavos = reaisParaCentavos(l.minimo);
+      const maximoCentavos = reaisParaCentavos(l.maximo);
+      const nome = `${nomeCategoria(l.categoria)}, ${CONDICAO_LABEL[l.condicao]}`;
+      if (!minimoCentavos || maximoCentavos === null || maximoCentavos < minimoCentavos) {
+        setErro(`confira a faixa de ${nome}: o mínimo precisa ser maior que zero e o máximo não pode ser menor que ele.`);
+        return document.getElementById(`preco-${i}-minimo`)?.focus();
+      }
+      faixas.push({ categoria: l.categoria, condicao: l.condicao, minimoCentavos, maximoCentavos });
+    }
+    try {
+      const r = await chamar((t) => admin.definirPrecosSugeridos(t, faixas));
+      setLinhas(paraLinhas(r.precosSugeridos));
+      setAviso("tabela de preço sugerido salva. o simulador do anúncio já usa a nova tabela.");
+    } catch (falha) {
+      setErro(mensagem(falha));
+    }
+  }
+
+  return (
+    <Secao id="precos" titulo="tabela de preço sugerido" aviso={aviso} erro={erro}>
+      <p className="mb-4 text-sm text-roxo-soft">
+        a faixa que o anúncio sugere para cada categoria e condição, em reais. ajuste os valores e salve a tabela inteira.
+      </p>
+      <form onSubmit={salvar} noValidate>
+        <Tabela legenda="faixas de preço sugerido" colunas={["categoria", "condição", "mínimo (R$)", "máximo (R$)"]}>
+          {linhas.map((l, i) => {
+            const nome = `${nomeCategoria(l.categoria)}, ${CONDICAO_LABEL[l.condicao]}`;
+            return (
+              <tr key={`${l.categoria}-${l.condicao}`}>
+                <td className={TD}>{nomeCategoria(l.categoria)}</td>
+                <td className={TD}>{CONDICAO_LABEL[l.condicao]}</td>
+                <td className={TD}>
+                  <input
+                    id={`preco-${i}-minimo`}
+                    aria-label={`mínimo de ${nome}`}
+                    inputMode="decimal"
+                    className={`${CAMPO} h-9 max-w-[8rem]`}
+                    value={l.minimo}
+                    onChange={(e) => mudar(i, "minimo", e.target.value)}
+                  />
+                </td>
+                <td className={TD}>
+                  <input
+                    aria-label={`máximo de ${nome}`}
+                    inputMode="decimal"
+                    className={`${CAMPO} h-9 max-w-[8rem]`}
+                    value={l.maximo}
+                    onChange={(e) => mudar(i, "maximo", e.target.value)}
+                  />
+                </td>
+              </tr>
+            );
+          })}
+        </Tabela>
+        <button type="submit" className={`mt-5 ${buttonClasses("violeta", "md")}`}>
+          salvar tabela
         </button>
       </form>
     </Secao>

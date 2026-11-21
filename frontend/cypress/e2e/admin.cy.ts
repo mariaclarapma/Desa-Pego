@@ -20,12 +20,25 @@ describe("painel da administração", () => {
       // o backend é a barreira: com o token de uma usuária comum, todas as rotas do painel dão 403
       cy.request("POST", "/api/auth/login", { email, senha: "garimpo123" }).then(({ body }) => {
         const headers = { Authorization: `Bearer ${body.accessToken}` };
-        for (const url of ["/api/gestao/admin/resumo", "/api/auth/admin/usuarios", "/api/admin/pecas", "/api/gestao/admin/repasses"]) {
+        for (const url of [
+          "/api/gestao/admin/resumo",
+          "/api/auth/admin/usuarios",
+          "/api/admin/pecas",
+          "/api/gestao/admin/repasses",
+          "/api/gestao/admin/configuracao",
+          "/api/admin/frete",
+        ]) {
           cy.request({ url, headers, failOnStatusCode: false }).its("status").should("eq", 403);
         }
-        cy.request({ method: "PUT", url: "/api/gestao/admin/comissao", headers, body: { comissaoPontosBase: 0 }, failOnStatusCode: false })
-          .its("status")
-          .should("eq", 403);
+        const alteracoes: [string, object][] = [
+          ["/api/gestao/admin/comissao", { comissaoPontosBase: 0 }],
+          ["/api/gestao/admin/taxa-pix", { taxaPixPontosBase: 0 }],
+          ["/api/admin/frete", { freteCentavos: 0 }],
+          ["/api/gestao/admin/precos-sugeridos", { faixas: [{ categoria: "bolsas", condicao: "otimo_estado", minimoCentavos: 1, maximoCentavos: 2 }] }],
+        ];
+        for (const [url, body] of alteracoes) {
+          cy.request({ method: "PUT", url, headers, body, failOnStatusCode: false }).its("status").should("eq", 403);
+        }
       });
     });
   });
@@ -34,7 +47,7 @@ describe("painel da administração", () => {
     entrarComoAdmin();
     cy.contains("a", "painel da administração").click();
     cy.location("pathname").should("eq", "/admin");
-    for (const secao of ["visão geral", "usuárias", "anúncios", "pedidos", "comissão da plataforma", "repasses"]) {
+    for (const secao of ["visão geral", "usuárias", "anúncios", "pedidos", "comissão da plataforma", "taxa do Pix", "frete fixo", "preço sugerido", "repasses"]) {
       cy.contains("h2", secao);
     }
     cy.contains("percentual atual");
@@ -73,5 +86,43 @@ describe("painel da administração", () => {
       cy.contains(`“${peca.titulo}” voltou para a vitrine.`);
       cy.request(`/api/pecas/${peca.id}`).its("status").should("eq", 200);
     });
+  });
+});
+
+describe("painel da administração: taxa do Pix, frete e preço sugerido", () => {
+  it("altera os valores pelo painel, o site passa a usá-los e depois volta ao padrão", () => {
+    entrarComoAdmin();
+    cy.visit("/admin");
+
+    cy.findCampo("nova taxa do Pix (%)").should("have.value", "0,00").clear().type("0,99");
+    cy.contains("button", "salvar taxa").click();
+    cy.contains("taxa do Pix alterada para 0,99%");
+    cy.request("/api/gestao/config").its("body.taxaPixPontosBase").should("eq", 99);
+
+    cy.findCampo("novo frete (R$)").should("have.value", "19,90").clear().type("24,50");
+    cy.contains("button", "salvar frete").click();
+    cy.contains("frete alterado para R$ 24,50");
+    cy.request("/api/config").its("body.freteCentavos").should("eq", 2450);
+
+    cy.findCampo("máximo de bolsas, ótimo estado").invoke("val").then((maximoOriginal) => {
+      cy.findCampo("mínimo de bolsas, ótimo estado").invoke("val").then((minimoOriginal) => {
+        cy.findCampo("mínimo de bolsas, ótimo estado").clear().type("999");
+        cy.contains("button", "salvar tabela").click();
+        cy.contains("confira a faixa de bolsas, ótimo estado");
+        cy.findCampo("mínimo de bolsas, ótimo estado").clear().type(String(minimoOriginal));
+        cy.findCampo("máximo de bolsas, ótimo estado").clear().type(String(maximoOriginal));
+        cy.contains("button", "salvar tabela").click();
+        cy.contains("tabela de preço sugerido salva");
+      });
+    });
+    cy.checarAcessibilidade();
+
+    // volta ao padrão para não afetar os outros testes
+    cy.findCampo("nova taxa do Pix (%)").clear().type("0");
+    cy.contains("button", "salvar taxa").click();
+    cy.contains("taxa do Pix alterada para 0,00%");
+    cy.findCampo("novo frete (R$)").clear().type("19,90");
+    cy.contains("button", "salvar frete").click();
+    cy.contains("frete alterado para R$ 19,90");
   });
 });

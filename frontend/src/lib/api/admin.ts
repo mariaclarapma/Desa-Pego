@@ -5,6 +5,7 @@
  * - resumo, pedidos, comissão e repasses: pedidos (/api/gestao/admin/*)
  * Todas as rotas exigem o token da administradora master; quem não é recebe 403 do backend.
  */
+import type { CategoriaSlug, Condicao } from "@/types/catalogo";
 import { chamarComToken, ErroApi } from "./autenticado";
 
 /** Mesmo erro das outras rotas privadas (status HTTP + mensagem do backend). */
@@ -24,9 +25,10 @@ export const TEXTO_STATUS: Record<StatusPedido, string> = {
 
 export interface Resumo {
   pedidosPorStatus: Partial<Record<StatusPedido, number>>;
-  vendas: { quantidade: number; totalCentavos: number; comissaoCentavos: number };
+  vendas: { quantidade: number; totalCentavos: number; comissaoCentavos: number; taxaPixCentavos: number };
   repasses: Partial<Record<"SOLICITADO" | "PAGO", { quantidade: number; totalCentavos: number }>>;
   comissaoPontosBase: number;
+  taxaPixPontosBase: number;
 }
 
 export interface UsuariaAdmin {
@@ -70,6 +72,20 @@ export interface RepasseAdmin {
   pagoEm: string | null;
 }
 
+/** Faixa de preço sugerido para uma categoria e condição (em centavos). */
+export interface FaixaPreco {
+  categoria: CategoriaSlug;
+  condicao: Condicao;
+  minimoCentavos: number;
+  maximoCentavos: number;
+}
+
+export interface ConfiguracaoPlataforma {
+  comissaoPontosBase: number;
+  taxaPixPontosBase: number;
+  precosSugeridos: FaixaPreco[];
+}
+
 export const admin = {
   resumo: (t: string) => chamar<Resumo>(t, "GET", "/gestao/admin/resumo"),
 
@@ -88,6 +104,16 @@ export const admin = {
   comissao: (t: string) => chamar<{ comissaoPontosBase: number }>(t, "GET", "/gestao/admin/comissao"),
   definirComissao: (t: string, comissaoPontosBase: number) =>
     chamar<{ comissaoPontosBase: number }>(t, "PUT", "/gestao/admin/comissao", { comissaoPontosBase }),
+
+  configuracao: (t: string) => chamar<ConfiguracaoPlataforma>(t, "GET", "/gestao/admin/configuracao"),
+  definirTaxaPix: (t: string, taxaPixPontosBase: number) =>
+    chamar<{ taxaPixPontosBase: number }>(t, "PUT", "/gestao/admin/taxa-pix", { taxaPixPontosBase }),
+  definirPrecosSugeridos: (t: string, faixas: FaixaPreco[]) =>
+    chamar<{ precosSugeridos: FaixaPreco[] }>(t, "PUT", "/gestao/admin/precos-sugeridos", { faixas }),
+
+  /** O frete é cobrado no checkout, então fica no catálogo. */
+  frete: (t: string) => chamar<{ freteCentavos: number }>(t, "GET", "/admin/frete"),
+  definirFrete: (t: string, freteCentavos: number) => chamar<{ freteCentavos: number }>(t, "PUT", "/admin/frete", { freteCentavos }),
 
   repasses: (t: string, status?: "SOLICITADO" | "PAGO") =>
     chamar<{ repasses: RepasseAdmin[] }>(t, "GET", `/gestao/admin/repasses${status ? `?status=${status}` : ""}`),
