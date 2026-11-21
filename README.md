@@ -250,7 +250,7 @@ Render.
 | `API_KEYS` | chaves aceitas no `X-API-Key` das rotas de integração (separadas por vírgula) | sem chave, a integração fica desligada | gerada pelo Render |
 | `CORS_ORIGENS` | origens do frontend liberadas no CORS (separadas por vírgula) | `http://localhost:3000` | **obrigatório** |
 | `DATABASE_URL` | PostgreSQL das contas e dos pedidos (Supabase; schemas `contas` e `pedidos`) | vazio = banco em memória | **obrigatório** |
-| `ADMIN_MASTER_EMAIL`, `ADMIN_MASTER_PASSWORD` | conta da administradora master (Ludy), criada ou promovida ao iniciar | sem elas, não há master | no painel do Render |
+| `ADMIN_MASTER_EMAIL`, `ADMIN_MASTER_PASSWORD` | conta da administradora master (Lucy), criada ou promovida ao iniciar | sem elas, não há master | no painel do Render |
 | `LIMITE_CADASTROS_POR_HORA` | cadastros por hora por IP | `10` | `10` |
 | `TRUST_PROXY` | proxies confiáveis para ler o IP real | `loopback` | `loopback, uniquelocal` |
 | `PORTA_CONTAS`, `PORTA_CATALOGO`, `PORTA_PEDIDOS`, `CONTAS_API_URL`, `CATALOGO_API_URL`, `PEDIDOS_API_URL`, `COOKIE_PATH` | portas e endereços internos | já preenchidos | iguais |
@@ -338,7 +338,7 @@ Os endpoints estão documentados em [`docs/openapi.yaml`](docs/openapi.yaml).
 
 **Perfis.**
 - Qualquer conta compra e vende.
-- A **administradora master** (Ludy, perfil `ADMIN_MASTER`) é criada pela seed a partir de `ADMIN_MASTER_EMAIL` e
+- A **administradora master** (Lucy, perfil `ADMIN_MASTER`) é criada pela seed a partir de `ADMIN_MASTER_EMAIL` e
   `ADMIN_MASTER_PASSWORD`. Só existe uma (há um índice único no banco), e ela não pode ser excluída nem bloqueada.
   Só ela acessa o painel.
 

@@ -9,15 +9,33 @@ describe("autenticação", () => {
 
   it("logout encerra a sessão e /conta volta a pedir login", () => {
     cy.cadastrar();
-    cy.contains("button", "sair da conta").click();
+    cy.get("main").contains("button", "sair da conta").click();
     cy.location("pathname").should("eq", "/entrar");
     cy.visit("/conta");
     cy.location("pathname").should("eq", "/entrar");
   });
 
+  it("sair também fica no menu (celular) e no cabeçalho (computador)", () => {
+    cy.cadastrar();
+    cy.get('button[aria-label="Abrir menu"]').click();
+    cy.get("dialog[open]").within(() => {
+      cy.contains("Teste Cypress");
+      cy.contains("a", "painel da administração").should("not.exist");
+      cy.contains("button", "sair da conta").click();
+    });
+    cy.location("pathname").should("eq", "/entrar");
+    cy.visit("/conta");
+    cy.location("pathname").should("eq", "/entrar");
+
+    cy.viewport(1280, 800);
+    cy.cadastrar();
+    cy.get('nav[aria-label="Atalhos da conta"]').contains("button", /^sair$/).click();
+    cy.location("pathname").should("eq", "/entrar");
+  });
+
   it("login com a senha certa entra; com a errada mostra mensagem genérica", () => {
     cy.cadastrar().then((email) => {
-      cy.contains("button", "sair da conta").click();
+      cy.get("main").contains("button", "sair da conta").click();
       cy.location("pathname").should("eq", "/entrar");
 
       cy.findCampo("e-mail").type(email);
@@ -46,7 +64,7 @@ describe("autenticação", () => {
 
   it("e-mail repetido não cria outra conta", () => {
     cy.cadastrar().then((email) => {
-      cy.contains("button", "sair da conta").click();
+      cy.get("main").contains("button", "sair da conta").click();
       cy.location("pathname").should("eq", "/entrar");
       cy.visit("/cadastro");
       cy.findCampo("nome completo").type("Outra Pessoa");
