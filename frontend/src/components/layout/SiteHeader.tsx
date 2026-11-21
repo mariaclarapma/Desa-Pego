@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useRef } from "react";
+import { useRef, useState } from "react";
 import { Logo } from "@/components/brand/Logo";
 import { buttonClasses } from "@/components/ui/Button";
 import { IconArrowRight, IconBag, IconClose, IconMenu, IconSparkle, IconUser } from "@/components/ui/icons";
@@ -9,6 +9,8 @@ import { CATEGORIAS } from "@/data/demo/catalogo";
 import { catalogoUrl, ROUTES } from "@/lib/routes";
 import { BotaoTema } from "@/components/acessibilidade/BotaoTema";
 import { SacolaBadge } from "@/components/sacola/SacolaBadge";
+import { sair } from "@/lib/api/contas";
+import { useSessao } from "@/lib/sessao";
 import { SearchForm } from "./SearchForm";
 
 const AVISOS = [
@@ -19,7 +21,6 @@ const AVISOS = [
 ];
 
 const LINKS_CONTA = [
-  { href: ROUTES.entrar, label: "entrar ou criar conta" },
   { href: ROUTES.minhasCompras, label: "minhas compras" },
   { href: ROUTES.minhasVendas, label: "minhas vendas" },
   { href: ROUTES.meusAnuncios, label: "meus anúncios" },
@@ -49,8 +50,24 @@ function AnnouncementBar() {
   );
 }
 
+/** Encerra a sessão (revoga o refresh token no servidor) e volta para a tela de entrar. */
+function useSair() {
+  const definir = useSessao((s) => s.definir);
+  const [saindo, setSaindo] = useState(false);
+  async function encerrar() {
+    setSaindo(true);
+    await sair().catch(() => undefined);
+    definir(null);
+    // recarrega a página: nada da sessão fica na memória do site
+    window.location.assign(ROUTES.entrar);
+  }
+  return { saindo, encerrar };
+}
+
 export function SiteHeader() {
   const menuRef = useRef<HTMLDialogElement>(null);
+  const usuario = useSessao((s) => s.sessao?.usuario);
+  const { saindo, encerrar } = useSair();
 
   const abrirMenu = () => menuRef.current?.showModal();
   const fecharMenu = () => menuRef.current?.close();
@@ -91,6 +108,16 @@ export function SiteHeader() {
             >
               <IconUser />
             </Link>
+            {usuario ? (
+              <button
+                type="button"
+                onClick={encerrar}
+                disabled={saindo}
+                className="hidden h-10 items-center rounded-full px-3 text-sm font-semibold text-roxo transition-colors hover:bg-rosa-100 sm:inline-flex"
+              >
+                {saindo ? "saindo…" : "sair"}
+              </button>
+            ) : null}
             {/* nome acessível pelo texto (e não aria-label): inclui o número visível da bolinha (WCAG 2.5.3) */}
             <Link
               href={ROUTES.carrinho}
@@ -184,7 +211,29 @@ export function SiteHeader() {
           </nav>
 
           <nav aria-label="Conta e ajuda" className="border-t-2 border-roxo px-5 py-5">
+            {usuario ? (
+              <p className="mb-2 px-3 text-sm text-roxo-soft">
+                olá, <strong className="text-roxo">{usuario.nome}</strong>
+              </p>
+            ) : null}
             <ul className="grid gap-1">
+              <li>
+                <Link
+                  href={usuario ? ROUTES.conta : ROUTES.entrar}
+                  onClick={fecharMenu}
+                  className="block rounded-xl px-3 py-2 font-medium transition-colors hover:bg-rosa-100"
+                >
+                  {usuario ? "minha conta" : "entrar ou criar conta"}
+                </Link>
+              </li>
+              {/* só esconde o atalho: quem barra o acesso ao painel é o backend (403) */}
+              {usuario?.perfil === "ADMIN_MASTER" ? (
+                <li>
+                  <Link href={ROUTES.admin} onClick={fecharMenu} className="block rounded-xl px-3 py-2 font-medium transition-colors hover:bg-rosa-100">
+                    painel da administração
+                  </Link>
+                </li>
+              ) : null}
               {LINKS_CONTA.map((link) => (
                 <li key={link.href}>
                   <Link
@@ -196,6 +245,18 @@ export function SiteHeader() {
                   </Link>
                 </li>
               ))}
+              {usuario ? (
+                <li>
+                  <button
+                    type="button"
+                    onClick={encerrar}
+                    disabled={saindo}
+                    className="block w-full rounded-xl px-3 py-2 text-left font-medium transition-colors hover:bg-rosa-100"
+                  >
+                    {saindo ? "saindo…" : "sair da conta"}
+                  </button>
+                </li>
+              ) : null}
             </ul>
           </nav>
 
