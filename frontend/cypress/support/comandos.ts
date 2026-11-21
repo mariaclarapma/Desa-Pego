@@ -45,10 +45,11 @@ Cypress.Commands.add("cadastrar", (senha = "garimpo123") => {
 });
 
 Cypress.Commands.add("pecaDisponivel", () =>
-  cy.request("/api/pecas").then(({ body }) => {
+  // a vitrine é paginada ({ itens, total, pagina, porPagina }): pede a página maior possível
+  cy.request("/api/pecas?porPagina=48").then(({ body }) => {
     const agora = Date.now();
     type PecaApi = { id: string; titulo: string; precoCentavos: number; status: string; reservadaAte?: string };
-    const livre = (body as PecaApi[]).find(
+    const livre = (body as { itens: PecaApi[] }).itens.find(
       (p) => p.status === "disponivel" || (p.status === "reservada" && !!p.reservadaAte && new Date(p.reservadaAte).getTime() <= agora),
     );
     if (!livre) throw new Error("nenhuma peça disponível na vitrine");

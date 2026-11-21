@@ -38,7 +38,7 @@ async function reservarECriarPedido() {
 describe("vitrine: GET /pecas e GET /pecas/:id", () => {
   it("lista as peças e devolve uma peça pelo id", async () => {
     const lista = await request(app).get("/pecas").expect(200);
-    expect(lista.body.length).toBe(loja.listarPecas().length);
+    expect(lista.body.total).toBe(loja.listarPecas().length);
     const peca = disponivel();
     expect((await request(app).get(`/pecas/${peca.id}`).expect(200)).body.titulo).toBe(peca.titulo);
   });
@@ -53,6 +53,93 @@ describe("vitrine: GET /pecas e GET /pecas/:id", () => {
     await request(app).post(`/pecas/${peca.id}/reservar`).expect(200);
     relogio += 16 * 60_000;
     expect((await request(app).get(`/pecas/${peca.id}`)).body.status).toBe("disponivel");
+  });
+});
+
+describe("vitrine: busca, filtros, ordenação e paginação no GET /pecas (Req. 007)", () => {
+  const ids = (res: request.Response) => res.body.itens.map((p: { id: string }) => p.id);
+  const vitrine = (query = "") => request(app).get(`/pecas${query}`).expect(200);
+
+  it("sem filtros: devolve { itens, total, pagina, porPagina }, mais recentes primeiro", async () => {
+    const res = await vitrine();
+    expect(res.body).toMatchObject({ total: 11, pagina: 1, porPagina: 12 });
+    expect(res.body.itens).toHaveLength(11);
+    expect(ids(res)[0]).toBe("demo-jaqueta-couro"); // criada em 18/11, a mais nova da semente
+    expect(ids(res).at(-1)).toBe("demo-oculos-redondo"); // criada em 08/11, a mais antiga
+  });
+
+  it("lista só peças ativas: tira vendidas e ocultas; reservada aparece com o status de reservada", async () => {
+    loja.peca("demo-jaqueta-couro")!.status = "vendida";
+    loja.peca("demo-bolsa-cereja")!.oculta = true;
+    Object.assign(loja.peca("demo-scarpin-floral")!, { status: "reservada", reservadaAte: new Date(relogio + 60_000).toISOString() });
+
+    const res = await vitrine();
+    expect(res.body.total).toBe(9);
+    expect(ids(res)).not.toContain("demo-jaqueta-couro");
+    expect(ids(res)).not.toContain("demo-bolsa-cereja");
+    expect(res.body.itens.find((p: { id: string }) => p.id === "demo-scarpin-floral").status).toBe("reservada");
+    // campos internos da administração não vazam para o público
+    expect(res.body.itens[0]).not.toHaveProperty("oculta");
+    expect(res.body.itens[0]).not.toHaveProperty("motivoOculta");
+  });
+
+  it("busca por título, marca e descrição, sem diferenciar maiúsculas e acentos", async () => {
+    expect(ids(await vitrine("?busca=OCULOS"))).toEqual(["demo-oculos-redondo"]); // título "Óculos..."
+    expect(ids(await vitrine(`?busca=${encodeURIComponent("feito a mao")}`))).toEqual(["demo-bolsa-palha", "demo-poncho-trico"]); // marca "feito à mão"
+    loja.peca("demo-tenis-pastel")!.descricao = "solado com detalhe de girassóis";
+    expect(ids(await vitrine("?busca=GIRASSOIS"))).toEqual(["demo-tenis-pastel"]);
+    expect((await vitrine("?busca=nao-existe-nada-assim")).body).toMatchObject({ itens: [], total: 0 });
+  });
+
+  it("combina filtros (categoria, tamanho, condição, faixa de preço em centavos) com a ordenação", async () => {
+    expect(ids(await vitrine("?categoria=bolsas&precoMax=9500&ordem=menor-preco"))).toEqual(["demo-bolsa-palha", "demo-bolsa-rosa"]);
+    expect(ids(await vitrine(`?condicao=nova_com_etiqueta&tamanho=${encodeURIComponent("único")}`))).toEqual(["demo-bolsa-cereja", "demo-oculos-redondo"]);
+    expect(ids(await vitrine("?precoMin=13000&ordem=maior-preco"))).toEqual(["demo-jaqueta-couro", "demo-bolsa-cereja", "demo-tenis-pastel"]);
+    expect(ids(await vitrine("?precoMin=9990&precoMax=9990"))).toEqual(["demo-bomber-caramelo"]); // os limites entram na faixa
+  });
+
+  it("ordena por menor e por maior preço", async () => {
+    const menor = ids(await vitrine("?ordem=menor-preco"));
+    const maior = ids(await vitrine("?ordem=maior-preco"));
+    expect(menor[0]).toBe("demo-poncho-trico"); // R$ 59,90
+    expect(maior[0]).toBe("demo-jaqueta-couro"); // R$ 189,90
+    expect(maior).toEqual([...menor].reverse());
+  });
+
+  it("pagina o resultado; o total conta todas as peças filtradas, não só as da página", async () => {
+    const p1 = await vitrine("?porPagina=4");
+    const p3 = await vitrine("?porPagina=4&pagina=3");
+    expect(p1.body).toMatchObject({ total: 11, pagina: 1, porPagina: 4 });
+    expect(p1.body.itens).toHaveLength(4);
+    expect(p3.body.itens).toHaveLength(3); // 4 + 4 + 3
+    expect(ids(p3).filter((id: string) => ids(p1).includes(id))).toEqual([]); // páginas não se repetem
+    // página além do fim: lista vazia, mas o total continua certo
+    expect((await vitrine("?porPagina=4&pagina=10")).body).toMatchObject({ itens: [], total: 11, pagina: 10 });
+  });
+
+  it("campos vazios (o formulário GET manda ?busca=&categoria=) contam como sem filtro", async () => {
+    const res = await vitrine("?busca=&categoria=&tamanho=&condicao=&precoMin=&precoMax=&ordem=&pagina=&porPagina=");
+    expect(res.body).toMatchObject({ total: 11, pagina: 1, porPagina: 12 });
+  });
+
+  it("parâmetros inválidos: 400 com o campo que está errado", async () => {
+    const invalidos = [
+      "categoria=eletronicos",
+      "condicao=usada",
+      "ordem=aleatoria",
+      "pagina=0",
+      "pagina=abc",
+      "porPagina=1000",
+      "precoMin=-1",
+      "precoMax=10.5",
+      `busca=${"a".repeat(101)}`,
+      "categoria=bolsas&categoria=feminino", // parâmetro repetido vira lista: recusado
+    ];
+    for (const q of invalidos) await request(app).get(`/pecas?${q}`).expect(400);
+
+    const res = await request(app).get("/pecas?precoMin=10000&precoMax=5000").expect(400);
+    expect(res.body.campos).toHaveProperty("precoMin");
+    expect((await request(app).get("/pecas?ordem=aleatoria")).body.campos).toHaveProperty("ordem");
   });
 });
 
@@ -206,7 +293,7 @@ describe("painel do admin: anúncios (Módulo 05)", () => {
     const lucy = await como("ADMIN_MASTER");
     const peca = disponivel();
     await request(app).post(`/admin/pecas/${peca.id}/ocultar`).set(lucy).send({ motivo: "foto imprópria" }).expect(200);
-    expect((await request(app).get("/pecas")).body.map((p: { id: string }) => p.id)).not.toContain(peca.id);
+    expect((await request(app).get("/pecas")).body.itens.map((p: { id: string }) => p.id)).not.toContain(peca.id);
     await request(app).get(`/pecas/${peca.id}`).expect(404);
     await request(app).post(`/pecas/${peca.id}/reservar`).expect(404);
     const lista = (await request(app).get("/admin/pecas").set(lucy).expect(200)).body.pecas;
