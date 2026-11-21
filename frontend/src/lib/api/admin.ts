@@ -86,7 +86,34 @@ export interface ConfiguracaoPlataforma {
   precosSugeridos: FaixaPreco[];
 }
 
+export type PeriodoDashboard = "30d" | "90d" | "12m" | "tudo";
+
+/** Dashboard de vendas (`GET /gestao/admin/dashboard`). Tudo em centavos. */
+export interface DashboardVendas {
+  /** true = números FICTÍCIOS do modo demonstração. */
+  demonstracao: boolean;
+  periodo: PeriodoDashboard;
+  granularidade: "dia" | "semana" | "mes";
+  totais: {
+    pedidos: number;
+    pecas: number;
+    vendasCentavos: number;
+    comissaoCentavos: number;
+    taxaPixCentavos: number;
+    ticketMedioCentavos: number;
+    comissaoPorPecaCentavos: number;
+  };
+  serie: { inicio: string; pedidos: number; vendasCentavos: number; comissaoCentavos: number }[];
+  porUf: { uf: string; pedidos: number; vendasCentavos: number }[];
+  cidades: { cidade: string; uf: string; pedidos: number }[];
+  porCategoria: { categoria: string; pecas: number; vendasCentavos: number }[];
+  vendedoras: { vendedoraId: string; nome?: string; pedidos: number; vendasCentavos: number; recebeCentavos: number }[];
+}
+
 export const admin = {
+  dashboard: (t: string, periodo: PeriodoDashboard, demonstracao: boolean) =>
+    chamar<DashboardVendas>(t, "GET", `/gestao/admin/dashboard?periodo=${periodo}&demo=${demonstracao ? 1 : 0}`),
+
   resumo: (t: string) => chamar<Resumo>(t, "GET", "/gestao/admin/resumo"),
 
   usuarias: (t: string, busca = "") =>

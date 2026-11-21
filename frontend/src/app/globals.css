@@ -26,6 +26,9 @@
   --color-lilas-100: #eee5fd;
   --color-pervinca: #b8c4f6;
   --color-pervinca-100: #e4e9fd;
+  /* gráficos do painel: barra (validada contra a névoa: faixa de luminosidade e contraste 3:1) e grade */
+  --color-grafico: #7a2bb8;
+  --color-grafico-grade: #e6daf0;
 
   --animate-marquee: marquee 28s linear infinite;
   --animate-spin-slow: spin 18s linear infinite;
@@ -77,6 +80,9 @@
   --color-pervinca: #34468f;
   --color-pervinca-100: #1c2448;
   --color-white: #241030;
+  /* o violeta do tema escuro é claro demais para barra; este passa na faixa do escuro */
+  --color-grafico: #a678e8;
+  --color-grafico-grade: #3a2347;
 }
 
 [data-tema="alto-contraste"] {
@@ -97,6 +103,8 @@
   --color-pervinca: #000000;
   --color-pervinca-100: #000000;
   --color-white: #000000;
+  --color-grafico: #ffe600;
+  --color-grafico-grade: #6b6b6b;
 }
 
 /*

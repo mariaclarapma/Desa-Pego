@@ -127,3 +127,56 @@ describe("painel da administração: taxa do Pix, frete e preço sugerido", () =
     cy.contains(/frete alterado para R\$\s19,90/);
   });
 });
+
+describe("painel da administração: painel de vendas", () => {
+  it("mostra vendas, comissão, estados, categorias e vendedoras; a demonstração vem marcada como fictícia", () => {
+    cy.viewport(1280, 900);
+    entrarComoAdmin();
+    cy.visit("/admin#vendas");
+    cy.get("#vendas").within(() => {
+      cy.contains("h3", "vendas");
+      cy.contains("h3", "comissão da plataforma");
+      cy.contains("h3", "para onde vão as peças");
+      cy.contains("h3", "o que mais vende");
+      cy.contains("h3", "cidades que mais recebem");
+      cy.contains("h3", "vendedoras que mais vendem");
+      // força a demonstração (o banco dos testes pode ter ou não vendas reais)
+      cy.get("button[aria-pressed]").then(($b) => {
+        if ($b.attr("aria-pressed") === "false") cy.wrap($b).click();
+      });
+      cy.contains("dados fictícios");
+      cy.contains("estes números são fictícios");
+      cy.contains("li", "SP");
+    });
+    // a rota é só da administradora
+    cy.request({ url: "/api/gestao/admin/dashboard?demo=1", failOnStatusCode: false }).its("status").should("eq", 401);
+    cy.checarAcessibilidade();
+    // capturas para conferir o visual (só da área visível, sem o cabeçalho fixo por cima)
+    const foto = (nome: string, alvo = "#vendas") => {
+      cy.get("header").invoke("css", "visibility", "hidden");
+      cy.get(alvo).first().scrollIntoView({ offset: { top: -10, left: 0 } });
+      cy.screenshot(nome, { capture: "viewport", overwrite: true });
+      cy.get("header").invoke("css", "visibility", "visible");
+    };
+    // nada pode passar da largura da tela (sem rolagem horizontal)
+    cy.window().then((win) => {
+      const largos = [...win.document.querySelectorAll("#vendas *")]
+        .filter((e) => e.getBoundingClientRect().right > win.innerWidth + 1)
+        .map((e) => `${e.tagName.toLowerCase()}.${String(e.getAttribute("class")).slice(0, 40)}`);
+      expect(largos, "elementos mais largos que a tela").to.deep.equal([]);
+    });
+    foto("painel-de-vendas-desktop");
+    cy.get("#vendas").find('rect[role="img"]').eq(10).focus();
+    cy.get('[role="tooltip"]').should("be.visible");
+    foto("painel-de-vendas-tooltip", "#vendas figure");
+    cy.get("#vendas").find('rect[role="img"]').eq(10).blur();
+    foto("painel-de-vendas-rankings", "#vendas ul[aria-label='para onde vão as peças']");
+
+    cy.viewport(375, 812);
+    foto("painel-de-vendas-celular", "#vendas figure");
+
+    cy.viewport(1280, 900);
+    cy.document().then((doc) => doc.documentElement.setAttribute("data-tema", "escuro"));
+    foto("painel-de-vendas-escuro", "#vendas dl");
+  });
+});

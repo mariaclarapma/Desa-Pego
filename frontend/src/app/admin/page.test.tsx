@@ -16,6 +16,18 @@ const FAIXAS = [
   { categoria: "calcados", condicao: "bom_estado", minimoCentavos: 3000, maximoCentavos: 13500 },
 ];
 
+const dashboardVazio = (demonstracao: boolean) => ({
+  demonstracao,
+  periodo: "12m",
+  granularidade: "mes",
+  totais: { pedidos: 0, pecas: 0, vendasCentavos: 0, comissaoCentavos: 0, taxaPixCentavos: 0, ticketMedioCentavos: 0, comissaoPorPecaCentavos: 0 },
+  serie: [],
+  porUf: [],
+  cidades: [],
+  porCategoria: [],
+  vendedoras: [],
+});
+
 const json = (corpo: unknown, status = 200) => new Response(JSON.stringify(corpo), { status });
 
 /** Respostas falsas do backend para cada rota do painel. */
@@ -36,6 +48,7 @@ function backendFalso() {
     if (url.startsWith("/api/gestao/admin/comissao") && init?.method === "PUT") return json(JSON.parse(String(init.body)));
     if (url.startsWith("/api/gestao/admin/comissao")) return json({ comissaoPontosBase: 1000 });
     if (url.startsWith("/api/gestao/admin/repasses")) return json({ repasses: [] });
+    if (url.startsWith("/api/gestao/admin/dashboard")) return json(dashboardVazio(url.includes("demo=1")));
     if (url.startsWith("/api/gestao/admin/configuracao")) return json({ comissaoPontosBase: 1000, taxaPixPontosBase: 0, precosSugeridos: FAIXAS });
     if (url.startsWith("/api/gestao/admin/taxa-pix")) return json(JSON.parse(String(init!.body)));
     if (url.startsWith("/api/gestao/admin/precos-sugeridos")) return json({ precosSugeridos: JSON.parse(String(init!.body)).faixas });
@@ -67,13 +80,13 @@ describe("painel da administração", () => {
     await vi.waitFor(() => expect(replace).toHaveBeenCalledWith("/entrar"));
   });
 
-  it("a administradora master vê as nove seções e a visão geral", async () => {
+  it("a administradora master vê as dez seções e a visão geral", async () => {
     vi.stubGlobal("fetch", backendFalso());
     useSessao.setState({ sessao: sessaoDe(lucy) });
     render(<AdminPage />);
     const nav = screen.getByRole("navigation", { name: "Seções do painel" });
-    expect(within(nav).getAllByRole("link")).toHaveLength(9);
-    for (const titulo of [/visão geral/, /usuárias/, /anúncios/, /^pedidos$/, /comissão da plataforma/, /taxa do Pix/, /frete fixo/, /preço sugerido/, /repasses/]) {
+    expect(within(nav).getAllByRole("link")).toHaveLength(10);
+    for (const titulo of [/visão geral/, /painel de vendas/, /usuárias/, /anúncios/, /^pedidos$/, /comissão da plataforma/, /taxa do Pix/, /frete fixo/, /preço sugerido/, /repasses/]) {
       expect(screen.getByRole("heading", { level: 2, name: titulo })).toBeInTheDocument();
     }
     expect(await screen.findByText("R$ 200,00")).toBeInTheDocument();
