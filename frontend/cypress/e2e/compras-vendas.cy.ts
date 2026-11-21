@@ -1,3 +1,4 @@
+import { gerarCpf } from "../support/cpf";
 /**
  * Req. 013: acompanhar o pedido da compra até a entrega, nas telas /conta/compras e /conta/vendas.
  * O pedido entra pela rota interna do Módulo 05 (com a API key), como o checkout do Módulo 04 fará.
@@ -8,7 +9,7 @@ type Conta = { id: string; email: string; nome: string };
 
 function criarConta(nome: string): Cypress.Chainable<Conta> {
   const email = `${nome.split(" ")[0].toLowerCase()}-${Date.now()}-${Cypress._.random(1e6)}@exemplo.com`;
-  return cy.request("POST", "/api/auth/cadastro", { nome, email, senha: SENHA }).then(({ body }) => {
+  return cy.request("POST", "/api/auth/cadastro", { nome, email, cpf: gerarCpf(), senha: SENHA }).then(({ body }) => {
     cy.clearCookies();
     return cy.wrap({ id: body.usuario.id as string, email, nome });
   });

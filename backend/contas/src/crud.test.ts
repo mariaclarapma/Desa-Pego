@@ -3,6 +3,7 @@ import { beforeEach, describe, expect, it } from "vitest";
 import { criarApp } from "./app.js";
 import { usarBancoDeTeste } from "./banco-teste.js";
 import type { Config } from "./config.js";
+import { chavesCpfTemporarias } from "./cpf-cripto.js";
 
 /**
  * CRUD da própria conta: CREATE (POST /auth/cadastro), READ (GET /auth/me),
@@ -18,10 +19,11 @@ const config: Config = {
   cookieSeguro: false,
   trustProxy: "loopback",
   origens: ["http://localhost:3000"],
+  cpf: chavesCpfTemporarias(),
 };
 
-const ANA = { nome: "Ana Souza", email: "ana@exemplo.com", senha: "garimpo123" };
-const BEA = { nome: "Bea Lima", email: "bea@exemplo.com", senha: "brecho2026" };
+const ANA = { nome: "Ana Souza", email: "ana@exemplo.com", cpf: "529.982.247-25", senha: "garimpo123" };
+const BEA = { nome: "Bea Lima", email: "bea@exemplo.com", cpf: "111.444.777-35", senha: "brecho2026" };
 
 const lerBanco = usarBancoDeTeste();
 let relogio: number;

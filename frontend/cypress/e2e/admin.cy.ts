@@ -1,3 +1,4 @@
+import { gerarCpf } from "../support/cpf";
 /**
  * Módulo 05: painel da administração. A administradora master de teste é criada pela seed
  * com ADMIN_MASTER_EMAIL/ADMIN_MASTER_PASSWORD (scripts/e2e.mjs) e chega aqui por Cypress.env.
@@ -57,7 +58,7 @@ describe("painel da administração", () => {
   it("altera a comissão, bloqueia e desbloqueia uma usuária, oculta e reexibe um anúncio", () => {
     // uma usuária para bloquear, criada pela API
     const email = `bloquear-${Date.now()}@exemplo.com`;
-    cy.request("POST", "/api/auth/cadastro", { nome: "Usuária Bloqueável", email, senha: "garimpo123" });
+    cy.request("POST", "/api/auth/cadastro", { nome: "Usuária Bloqueável", email, cpf: gerarCpf(), senha: "garimpo123" });
     cy.clearCookies();
     entrarComoAdmin();
     cy.visit("/admin");

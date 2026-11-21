@@ -104,6 +104,7 @@ describe("PaginaConta", () => {
 
     await user.type(screen.getByLabelText("nome completo"), "Ana Souza");
     await user.type(screen.getByLabelText("e-mail"), "ana@exemplo.com");
+    await user.type(screen.getByLabelText("CPF"), "52998224725");
     await user.type(screen.getByLabelText("senha"), "garimpo123");
     await user.type(screen.getByLabelText("confirmar senha"), "garimpo123");
     await user.click(screen.getByRole("button", { name: "criar minha conta" }));
@@ -121,5 +122,70 @@ describe("PaginaConta", () => {
     await user.click(screen.getByRole("button", { name: "entrar" }));
 
     expect(await screen.findByRole("alert")).toHaveTextContent("e-mail ou senha incorretos.");
+  });
+
+  describe("CPF no cadastro (Req. 001)", () => {
+    async function preencher(user: ReturnType<typeof userEvent.setup>, cpf: string) {
+      await user.type(screen.getByLabelText("nome completo"), "Ana Souza");
+      await user.type(screen.getByLabelText("e-mail"), "ana@exemplo.com");
+      await user.type(screen.getByLabelText("CPF"), cpf);
+      await user.type(screen.getByLabelText("senha"), "garimpo123");
+      await user.type(screen.getByLabelText("confirmar senha"), "garimpo123");
+    }
+
+    it("aplica a máscara enquanto digita e só aparece no cadastro", async () => {
+      const user = userEvent.setup();
+      render(<PaginaConta modoInicial="cadastro" />);
+      const cpf = screen.getByLabelText("CPF");
+      expect(cpf).toHaveAttribute("inputmode", "numeric");
+      await user.type(cpf, "529982247a25");
+      expect(cpf).toHaveValue("529.982.247-25");
+
+      await user.click(screen.getByRole("tab", { name: "entrar" }));
+      expect(screen.queryByLabelText("CPF")).not.toBeInTheDocument();
+    });
+
+    it("não envia CPF inválido e mostra o erro ligado ao campo", async () => {
+      const user = userEvent.setup();
+      const fetchFalso = vi.fn();
+      vi.stubGlobal("fetch", fetchFalso);
+      render(<PaginaConta modoInicial="cadastro" />);
+      await preencher(user, "52998224724");
+      await user.click(screen.getByRole("button", { name: "criar minha conta" }));
+
+      const cpf = screen.getByLabelText("CPF");
+      expect(cpf).toHaveFocus();
+      expect(cpf).toHaveAttribute("aria-invalid", "true");
+      expect(cpf).toHaveAccessibleDescription(expect.stringContaining("CPF inválido. confira os números."));
+      expect(fetchFalso).not.toHaveBeenCalled();
+    });
+
+    it("envia só os dígitos do CPF", async () => {
+      const user = userEvent.setup();
+      const sessao = { usuario: { id: "1", nome: "Ana Souza", email: "ana@exemplo.com" }, accessToken: "ey.x.y", expiraEm: "" };
+      const fetchFalso = vi.fn().mockResolvedValue(new Response(JSON.stringify(sessao), { status: 201 }));
+      vi.stubGlobal("fetch", fetchFalso);
+      render(<PaginaConta modoInicial="cadastro" />);
+      await preencher(user, "529.982.247-25");
+      await user.click(screen.getByRole("button", { name: "criar minha conta" }));
+
+      await vi.waitFor(() => expect(push).toHaveBeenCalledWith("/conta"));
+      const corpo = JSON.parse(fetchFalso.mock.calls[0][1].body);
+      expect(corpo).toEqual({ nome: "Ana Souza", email: "ana@exemplo.com", cpf: "52998224725", senha: "garimpo123" });
+    });
+
+    it("CPF já cadastrado: mostra a mensagem do backend no alerta e no campo", async () => {
+      const user = userEvent.setup();
+      const msg = "este CPF já está vinculado a uma conta. se a conta é sua, entre com seu e-mail.";
+      vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response(JSON.stringify({ erro: msg, campos: { cpf: msg } }), { status: 409 })));
+      render(<PaginaConta modoInicial="cadastro" />);
+      await preencher(user, "52998224725");
+      await user.click(screen.getByRole("button", { name: "criar minha conta" }));
+
+      expect(await screen.findByRole("alert")).toHaveTextContent(msg);
+      expect(screen.getByLabelText("CPF")).toHaveAttribute("aria-invalid", "true");
+      expect(screen.getByLabelText("CPF")).toHaveAccessibleDescription(expect.stringContaining(msg));
+      expect(push).not.toHaveBeenCalled();
+    });
   });
 });

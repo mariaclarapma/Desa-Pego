@@ -20,6 +20,13 @@ export interface UsuarioRegistro {
   /** Conta bloqueada pela administração: não entra nem renova a sessão. */
   bloqueada: boolean;
   criado_em: string;
+  /**
+   * CPF (Req. 001), nunca em texto puro: HMAC para a unicidade e AES-GCM para guardar
+   * (veja cpf-cripto.ts). Nulos nas contas criadas antes do campo e na administradora master.
+   * Ficam só dentro do serviço: nenhuma resposta da API inclui estes campos.
+   */
+  cpf_hash?: string | null;
+  cpf_cifrado?: string | null;
 }
 
 export interface SessaoRegistro {
@@ -32,7 +39,10 @@ export interface SessaoRegistro {
 
 export type Banco = Awaited<ReturnType<typeof abrirBanco>>;
 
-/** Erro de e-mail repetido (restrição UNIQUE, código 23505 do Postgres). */
+/**
+ * Violação de restrição UNIQUE (código 23505 do Postgres): e-mail ou CPF repetido.
+ * Para saber qual dos dois, a rota consulta o banco de novo (funciona igual no pg-mem e no Postgres).
+ */
 export const emailDuplicado = (erro: unknown) => {
   const e = erro as { code?: string; message?: string };
   return e?.code === "23505" || /duplicate key|unique/i.test(e?.message ?? "");
@@ -57,7 +67,9 @@ export async function abrirBanco(url?: string, schema = "contas") {
       senha_hash TEXT NOT NULL,
       perfil TEXT NOT NULL DEFAULT 'USUARIO' CHECK (perfil IN ('USUARIO', 'ADMIN', 'ADMIN_MASTER')),
       bloqueada BOOLEAN NOT NULL DEFAULT false,
-      criado_em TIMESTAMPTZ NOT NULL DEFAULT now()
+      criado_em TIMESTAMPTZ NOT NULL DEFAULT now(),
+      cpf_hash TEXT,
+      cpf_cifrado TEXT
     )`);
   await db.query(`
     CREATE TABLE IF NOT EXISTS ${s}.sessoes (
@@ -69,6 +81,13 @@ export async function abrirBanco(url?: string, schema = "contas") {
       criado_em TIMESTAMPTZ NOT NULL DEFAULT now()
     )`);
   await db.query(`CREATE INDEX IF NOT EXISTS sessoes_usuario ON ${s}.sessoes (usuario_id)`);
+  if (!memoria) {
+    // migração do Req. 001 (CPF): colunas novas, nulas nas contas antigas (o UNIQUE aceita vários NULL)
+    await db.query(`ALTER TABLE ${s}.usuarios ADD COLUMN IF NOT EXISTS cpf_hash TEXT`);
+    await db.query(`ALTER TABLE ${s}.usuarios ADD COLUMN IF NOT EXISTS cpf_cifrado TEXT`);
+  }
+  // um CPF por conta: é o banco que garante, mesmo com dois cadastros ao mesmo tempo
+  await db.query(`CREATE UNIQUE INDEX IF NOT EXISTS usuarios_cpf_hash_unico ON ${s}.usuarios (cpf_hash)`);
   if (!memoria) {
     // migração das tabelas criadas antes do Módulo 05 (perfil ADMIN_MASTER e bloqueio de conta)
     await db.query(`ALTER TABLE ${s}.usuarios ADD COLUMN IF NOT EXISTS bloqueada BOOLEAN NOT NULL DEFAULT false`);
@@ -91,17 +110,15 @@ export async function abrirBanco(url?: string, schema = "contas") {
   const um = async (sql: string, valores: unknown[]) => (await db.query(sql, valores)).rows[0];
 
   return {
-    /** Lança erro 23505 (veja `emailDuplicado`) se o e-mail já existir. */
+    /** Lança erro 23505 (veja `emailDuplicado`) se o e-mail ou o CPF já existirem. */
     async criarUsuario(u: Omit<UsuarioRegistro, "perfil" | "criado_em" | "bloqueada"> & { perfil?: UsuarioRegistro["perfil"] }) {
-      await db.query(`INSERT INTO ${s}.usuarios (id, nome, email, senha_hash, criado_em, perfil) VALUES ($1, $2, $3, $4, $5, $6)`, [
-        u.id,
-        u.nome,
-        u.email,
-        u.senha_hash,
-        agora(),
-        u.perfil ?? "USUARIO",
-      ]);
+      await db.query(
+        `INSERT INTO ${s}.usuarios (id, nome, email, senha_hash, criado_em, perfil, cpf_hash, cpf_cifrado) VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
+        [u.id, u.nome, u.email, u.senha_hash, agora(), u.perfil ?? "USUARIO", u.cpf_hash ?? null, u.cpf_cifrado ?? null],
+      );
     },
+    /** Só confere se o CPF já tem conta (pelo hash): não devolve dados da outra conta. */
+    cpfEmUso: async (cpfHash: string) => !!(await um(`SELECT 1 AS existe FROM ${s}.usuarios WHERE cpf_hash = $1`, [cpfHash])),
     usuarioPorEmail: async (email: string) => usuario(await um(`SELECT * FROM ${s}.usuarios WHERE email = $1`, [email])),
     usuarioPorId: async (id: string) => usuario(await um(`SELECT * FROM ${s}.usuarios WHERE id = $1`, [id])),
     async criarSessao(x: Omit<SessaoRegistro, "revogada_em">) {

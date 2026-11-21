@@ -22,6 +22,13 @@ services:
       # o Render gera um segredo aleatório na criação; não precisa mexer
       - key: JWT_SECRET
         generateValue: true
+      # CPF das contas (Req. 001): gere cada uma com `openssl rand -base64 32`, cole no painel e guarde
+      # no cofre do grupo NA HORA. Sem generateValue de propósito: recriar o serviço geraria chaves novas,
+      # os CPFs ficariam ilegíveis e o banco deixaria de pegar CPF repetido. Veja docs/CPF.md.
+      - key: CPF_CRIPTO_CHAVE
+        sync: false
+      - key: CPF_HASH_CHAVE
+        sync: false
       # cole a URL do Supabase (Connect → Session pooler) no painel; nunca no repositório
       - key: DATABASE_URL
         sync: false
