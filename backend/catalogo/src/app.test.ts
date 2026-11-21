@@ -234,3 +234,40 @@ describe("painel do admin: anúncios (Módulo 05)", () => {
     await request(app).post("/admin/pecas/nao-existe/ocultar").set(await como("ADMIN_MASTER")).expect(404);
   });
 });
+
+describe("painel do admin: frete fixo (Req. 014)", () => {
+  const como = async (perfil: string) => ({
+    Authorization: `Bearer ${await new SignJWT({ nome: "x", perfil }).setProtectedHeader({ alg: "HS256" }).setSubject("u-1").setExpirationTime("15m").sign(SEGREDO)}`,
+  });
+
+  it("sem definição, vale o frete padrão do servidor; a rota pública mostra o atual", async () => {
+    expect((await request(app).get("/config").expect(200)).body).toEqual({ freteCentavos: 1990, reservaMinutos: 15 });
+    expect((await request(app).get("/admin/frete").set(await como("ADMIN_MASTER")).expect(200)).body).toEqual({ freteCentavos: 1990 });
+  });
+
+  it("o admin muda o frete: vale para pedidos novos, os antigos guardam o deles", async () => {
+    const { pedido: antigo } = await reservarECriarPedido();
+    await request(app).put("/admin/frete").set(await como("ADMIN_MASTER")).send({ freteCentavos: 2500 }).expect(200);
+    expect((await request(app).get("/config").expect(200)).body.freteCentavos).toBe(2500);
+
+    const { peca, pedido: novo } = await reservarECriarPedido();
+    expect(novo).toMatchObject({ freteCentavos: 2500, totalCentavos: peca.precoCentavos + 2500 });
+    expect((await request(app).get(`/pedidos/${antigo.id}`).expect(200)).body.freteCentavos).toBe(1990);
+  });
+
+  it("frete inválido é recusado (negativo, fração, acima de R$ 200 ou texto)", async () => {
+    for (const valor of [-1, 10.5, 20_001, "1990"]) {
+      await request(app).put("/admin/frete").set(await como("ADMIN_MASTER")).send({ freteCentavos: valor }).expect(400);
+    }
+    expect((await request(app).get("/config").expect(200)).body.freteCentavos).toBe(1990);
+  });
+
+  it("quem não é administradora não muda o frete (403); sem login, 401", async () => {
+    for (const perfil of ["USUARIO", "ADMIN"]) {
+      await request(app).put("/admin/frete").set(await como(perfil)).send({ freteCentavos: 0 }).expect(403);
+      await request(app).get("/admin/frete").set(await como(perfil)).expect(403);
+    }
+    await request(app).put("/admin/frete").send({ freteCentavos: 0 }).expect(401);
+    expect((await request(app).get("/config").expect(200)).body.freteCentavos).toBe(1990);
+  });
+});
