@@ -94,23 +94,24 @@ describe("painel da administração: taxa do Pix, frete e preço sugerido", () =
     entrarComoAdmin();
     cy.visit("/admin");
 
-    cy.findCampo("nova taxa do Pix (%)").should("have.value", "0,00").clear().type("0,99");
+    // sem conferir o valor inicial: se uma tentativa anterior falhou no meio, ele pode não ser o padrão
+    cy.findCampo("nova taxa do Pix (%)").should("not.have.value", "").clear().type("0,99");
     cy.contains("button", "salvar taxa").click();
     cy.contains("taxa do Pix alterada para 0,99%");
     cy.request("/api/gestao/config").its("body.taxaPixPontosBase").should("eq", 99);
 
-    cy.findCampo("novo frete (R$)").should("have.value", "19,90").clear().type("24,50");
+    cy.findCampo("novo frete (R$)").should("not.have.value", "").clear().type("24,50");
     cy.contains("button", "salvar frete").click();
-    cy.contains("frete alterado para R$ 24,50");
+    cy.contains(/frete alterado para R\$\s24,50/);
     cy.request("/api/config").its("body.freteCentavos").should("eq", 2450);
 
-    cy.findCampo("máximo de bolsas, ótimo estado").invoke("val").then((maximoOriginal) => {
-      cy.findCampo("mínimo de bolsas, ótimo estado").invoke("val").then((minimoOriginal) => {
-        cy.findCampo("mínimo de bolsas, ótimo estado").clear().type("999");
+    cy.get('input[aria-label="máximo de bolsas, ótimo estado"]').invoke("val").then((maximoOriginal) => {
+      cy.get('input[aria-label="mínimo de bolsas, ótimo estado"]').invoke("val").then((minimoOriginal) => {
+        cy.get('input[aria-label="mínimo de bolsas, ótimo estado"]').clear().type("999");
         cy.contains("button", "salvar tabela").click();
         cy.contains("confira a faixa de bolsas, ótimo estado");
-        cy.findCampo("mínimo de bolsas, ótimo estado").clear().type(String(minimoOriginal));
-        cy.findCampo("máximo de bolsas, ótimo estado").clear().type(String(maximoOriginal));
+        cy.get('input[aria-label="mínimo de bolsas, ótimo estado"]').clear().type(String(minimoOriginal));
+        cy.get('input[aria-label="máximo de bolsas, ótimo estado"]').clear().type(String(maximoOriginal));
         cy.contains("button", "salvar tabela").click();
         cy.contains("tabela de preço sugerido salva");
       });
@@ -123,6 +124,6 @@ describe("painel da administração: taxa do Pix, frete e preço sugerido", () =
     cy.contains("taxa do Pix alterada para 0,00%");
     cy.findCampo("novo frete (R$)").clear().type("19,90");
     cy.contains("button", "salvar frete").click();
-    cy.contains("frete alterado para R$ 19,90");
+    cy.contains(/frete alterado para R\$\s19,90/);
   });
 });

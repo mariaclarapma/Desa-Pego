@@ -43,7 +43,9 @@ function vendaEntregue(compradora: Conta, vendedora: Conta) {
     });
 }
 
-const reais = (centavos: number) => `R$ ${(centavos / 100).toFixed(2).replace(".", ",")}`;
+// mesmo formato do site (Intl, com espaço não separável depois do "R$")
+const brl = new Intl.NumberFormat("pt-BR", { style: "currency", currency: "BRL" });
+const reais = (centavos: number) => brl.format(centavos / 100);
 
 describe("carteira da vendedora (Req. 014)", () => {
   it("venda entregue fica disponível, o extrato separa comissão e taxa, e o saque respeita o saldo", () => {
@@ -63,7 +65,7 @@ describe("carteira da vendedora (Req. 014)", () => {
 
           cy.get('section[aria-labelledby="titulo-saldo"]').within(() => {
             cy.contains("dt", "disponível").next().should("have.text", reais(pedido.vendedoraCentavos));
-            cy.contains("dt", "pendente").next().should("have.text", "R$ 0,00");
+            cy.contains("dt", "pendente").next().should("have.text", reais(0));
           });
           cy.get('ul[aria-label="lançamentos"]').within(() => {
             cy.contains("comissão da plataforma");
@@ -88,7 +90,7 @@ describe("carteira da vendedora (Req. 014)", () => {
 
           cy.findCampo("valor do saque (R$)").clear().type("50");
           cy.contains("button", "pedir saque").click();
-          cy.contains("saque de R$ 50,00 pedido");
+          cy.contains(/saque de R\$\s50,00 pedido/);
           cy.contains("aguardando o Pix");
           cy.contains("dt", "pode sacar").next().should("have.text", reais(pedido.vendedoraCentavos - 5000));
         });
