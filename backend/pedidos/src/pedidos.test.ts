@@ -79,13 +79,26 @@ describe("pedidos: transições válidas de status", () => {
 });
 
 describe("pedidos: transições inválidas (devem falhar)", () => {
-  it("não envia antes de pagar, não confirma antes de enviar e não paga duas vezes", async () => {
+  it("não envia antes de pagar e não confirma antes de enviar", async () => {
     const p = await criarPedido();
     await enviar(p.id, VENDEDORA, 409);
     await receber(p.id, COMPRADORA, 409);
     await pagar(p.id).expect(200);
-    await pagar(p.id).expect(409);
     await receber(p.id, COMPRADORA, 409);
+  });
+
+  it("webhook repetido é idempotente: responde 200 e lança na carteira uma vez só", async () => {
+    const p = await criarPedido();
+    expect((await pagar(p.id).expect(200)).body.status).toBe("PAGO");
+    expect((await pagar(p.id).expect(200)).body.status).toBe("PAGO");
+    expect((await carteira()).pendenteCentavos).toBe(p.vendedoraCentavos);
+
+    const c = await criarPedido();
+    await request(app).post(`/interno/pedidos/${c.id}/expirar`).set(interno).expect(200);
+    expect((await request(app).post(`/interno/pedidos/${c.id}/expirar`).set(interno).expect(200)).body.status).toBe("CANCELADO");
+    // pago não vira cancelado pelo sistema (só a administração estorna), e cancelado não vira pago
+    await request(app).post(`/interno/pedidos/${p.id}/expirar`).set(interno).expect(403);
+    await pagar(c.id).expect(409);
   });
 
   it("pedido entregue ou cancelado não muda mais", async () => {

@@ -38,7 +38,7 @@ Este documento descreve a arquitetura técnica do sistema web Desa Pego, um brec
 
 - Marketplace comunitário: qualquer pessoa cadastrada pode vender e comprar. A plataforma intermedeia o pagamento e retém uma comissão.
 
-- Pagamento somente via Pix no MVP; frete fixo configurável pelo admin.
+- Pagamento somente via Pix no MVP; frete fixo configurável pelo admin, cobrado uma vez por vendedora da sacola (cada uma envia a sua parte).
 
 - Repasse ao vendedor feito manualmente pelo admin, via Pix, após a confirmação de recebimento.
 
@@ -453,7 +453,7 @@ AWS Application Load Balancer (ALB) distribuindo o tráfego entre as tarefas do 
 | RTO              | Recovery Time Objective: tempo máximo aceitável para restabelecer o sistema                            |
 | SSR              | Renderização no servidor                                                                               |
 | TTL              | Time to Live: tempo até um dado expirar automaticamente                                                |
-| Valor líquido    | Preço da peça menos comissão e taxa do Pix, valor que o vendedor recebe                                |
+| Valor líquido    | Valor que o vendedor recebe: preço das peças + frete fixo (quem envia é ele) − comissão (sobre as peças) − taxa do Pix (sobre o total cobrado) |
 | Webhook          | Chamada que um serviço externo faz ao sistema para avisar de um evento                                 |
 
 ## 12. Histórico de Revisões

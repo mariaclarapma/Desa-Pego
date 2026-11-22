@@ -14,6 +14,7 @@ export interface ItemPedido {
   id: string;
   titulo: string;
   precoCentavos: number;
+  vendedoraId?: string;
 }
 
 export interface Pedido {
@@ -29,4 +30,6 @@ export interface Pedido {
   pixCopiaECola: string;
   pixExpiraEm: string;
   criadoEm: string;
+  /** Um pedido por vendedora no Módulo 05 (cada uma envia a sua parte e cobra o seu frete). */
+  pedidosGestao?: { vendedoraId: string; pedidoId: string }[];
 }

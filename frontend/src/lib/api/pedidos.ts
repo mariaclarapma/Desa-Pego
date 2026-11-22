@@ -12,7 +12,13 @@ export interface NovoPedido {
   itens: string[];
 }
 
-/** Cria o pedido aguardando pagamento, com a cobrança Pix (PixSimuladoProvider). */
-export const criarPedido = (dados: NovoPedido) => api<Pedido>("/pedidos", { method: "POST", json: dados });
+const comToken = (token: string) => ({ Authorization: `Bearer ${token}` });
 
-export const buscarPedido = (id: string) => api<Pedido>(`/pedidos/${encodeURIComponent(id)}`);
+/**
+ * Cria o pedido aguardando pagamento, com a cobrança Pix (PixSimuladoProvider). Exige login:
+ * o servidor também cria um pedido por vendedora no Módulo 05 (minhas compras e vendas).
+ */
+export const criarPedido = (token: string, dados: NovoPedido) => api<Pedido>("/pedidos", { method: "POST", json: dados, headers: comToken(token) });
+
+/** Só a compradora consegue ver o pedido. */
+export const buscarPedido = (token: string, id: string) => api<Pedido>(`/pedidos/${encodeURIComponent(id)}`, { headers: comToken(token) });
