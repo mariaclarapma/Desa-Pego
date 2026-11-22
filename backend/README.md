@@ -102,17 +102,29 @@ o site usa, e as regras ficam no servidor.
 | Método e rota | Uso |
 | --- | --- |
 | `GET /pecas`, `GET /pecas/:id` | vitrine e página da peça (reserva vencida volta como disponível) |
-| `POST /pecas/:id/reservar` | reserva por 15 min · 200, 404, 409 se outra pessoa reservou antes |
-| `POST /pecas/:id/liberar` | desfaz a reserva (peça vendida continua vendida) |
-| `POST /pedidos` | cria o pedido com `{ comprador, endereco, itens: [ids] }`; preço, frete e total vêm do catálogo · 201, 400, 409 |
-| `GET /pedidos/:id` | consulta o pedido |
-| `POST /integracao/pagamentos/:id/confirmar` | **X-API-Key** · webhook do Pix: pago + peças vendidas (idempotente) · 200, 401, 404, 503 |
+| `POST /pecas/:id/reservar` | **login** · reserva por 15 min no nome de quem reservou · 200, 401, 403 (peça da própria vendedora), 404, 409 |
+| `POST /pecas/:id/liberar` | **login** · desfaz a reserva; só quem reservou (peça vendida continua vendida) · 200, 401, 403, 409 (peça num pedido aguardando Pix) |
+| `POST /pedidos` | **login** · checkout com `{ comprador, endereco, itens: [ids] }`; preço, frete e total vêm do catálogo. O `CompraFacade` cria um pedido por vendedora no Módulo 05 · 201, 400, 401, 403, 409, 502, 503 |
+| `GET /pedidos/:id` | **login** · só a compradora vê o pedido (para as outras contas, 404) |
+| `POST /integracao/pagamentos/:id/confirmar` | **X-API-Key** · webhook do Pix: confirma no Módulo 05, depois pago + peças vendidas (idempotente) · 200, 401, 404, 409 (Pix vencido), 502, 503 |
 | `GET /integracao/pedidos?status=` | **X-API-Key** · exporta os pedidos · 200, 400, 401, 503 |
 
 As alterações passam por uma **fila** (uma de cada vez), então duas reservas da mesma peça ao mesmo tempo não passam
 juntas, que é o papel do `UPDATE ... WHERE status = 'disponivel'` atômico do banco real (ADR-003). Tem Helmet, CORS
 por lista (`CORS_ORIGENS`), limite por IP (300 leituras e 30 escritas por minuto) e validação com Zod. Os testes
 ficam em `catalogo/src/app.test.ts`.
+
+**Compra → Módulo 05 (issue #31).** O checkout e o webhook do Pix passam pelo `CompraFacade`
+(`catalogo/src/compra-facade.ts`), que coordena o catálogo, o serviço de pedidos (rotas `/interno`, com a primeira
+chave de `API_KEYS`, em `PEDIDOS_API_URL`, padrão `http://localhost:3003`) e o Pix simulado:
+
+- cada vendedora da sacola vira um pedido no Módulo 05 e cobra o seu frete fixo; o Pix é um só, com o total;
+- o Módulo 05 é avisado **antes** de o catálogo mudar. Se ele falhar, nada muda (502) e dá para repetir;
+- a cada minuto, os pedidos com o Pix vencido são cancelados aqui e no Módulo 05, e as peças voltam à vitrine;
+- a peça precisa de `vendedoraId` (quem grava é o anúncio, Módulo 02). As peças de exemplo usam contas de
+  demonstração (`demo-vendedora-*`). Com um `db.json` antigo, rode `npm run reset-db -w backend`.
+
+O teste de ponta a ponta, com os dois serviços conversando por HTTP, fica em `catalogo/src/integracao-modulo05.test.ts`.
 
 ## Segurança comum (`comum/`)
 

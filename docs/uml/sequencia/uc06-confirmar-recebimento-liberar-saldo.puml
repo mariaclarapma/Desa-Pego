@@ -1,61 +1,63 @@
 @startuml
 !include ../_estilo.iuml
-title UC06 · Atualizar entrega do pedido e liberar saldo — Diagrama de sequência\n<size:11>Requisitos 013 e 014 · Módulo 05 (Pedidos, Carteira e Administração)</size>
+title UC06 · Acompanhar a entrega e liberar o saldo — Diagrama de sequência\n<size:11>Requisitos 013 e 014 · Módulo 05 (pedidos, carteira e administração)</size>
 autonumber
 hide footbox
 
-actor Vendedor
-actor Comprador
-participant "Frontend" as FE
-participant ":PedidoController" as C
-participant ":PedidoService" as S
-participant ":Pedido" as P
-participant ":CarteiraController" as CC
-participant ":CarteiraService" as CS
-database "Banco de dados" as DB
+actor Vendedora
+actor Compradora
+actor Administradora
+participant "Site\n(Next.js)" as FE
+box "Serviço de pedidos (Módulo 05)" #FBFBFB
+  participant "Rotas\n(app.ts)" as R
+  participant "Máquina de estados\n(estados.ts)" as E
+  database "PostgreSQL\n(schema pedidos)" as DB
+end box
 
-== Vendedor envia a peça ==
-Vendedor -> FE : clica em "Marcar como enviado"
-FE -> C : marcarComoEnviado(pedidoId)
-C -> S : marcarComoEnviado(pedidoId, usuarioId)
-S -> DB : busca o pedido
-alt usuário não é o vendedor do pedido
-  S --> FE : erro "Acesso negado"
-else é o vendedor
-  S -> P : mudarStatus(ENVIADO)
-  alt status atual não é PAGO
-    P --> S : transição inválida
-    S --> FE : erro "Pedido ainda não foi pago"
-  else status atual é PAGO
-    S -> DB : salva pedido ENVIADO
-    S --> FE : pedido enviado
-  end
+== Vendedora marca o envio ==
+Vendedora -> FE : /conta/vendas → "marcar como enviado"
+FE -> R : POST /pedidos/{id}/enviar (Bearer)
+R -> DB : lê o pedido
+R -> E : conferirTransicao(PAGO → ENVIADO, vendedora)
+alt quem chamou não participa do pedido
+  R --> FE : 403 "este pedido não é seu"
+else transição fora da tabela (ex.: ainda não pago)
+  E --> R : transição inválida
+  R --> FE : 409
+else permitido
+  R -> DB : status → ENVIADO
+  R --> FE : 200
+  FE --> Vendedora : linha do tempo atualizada
 end
 
-== Comprador confirma o recebimento ==
-Comprador -> FE : clica em "Confirmar recebimento"
-FE -> C : confirmarRecebimento(pedidoId)
-C -> S : confirmarRecebimento(pedidoId, usuarioId)
-S -> DB : busca o pedido
-alt usuário não é o comprador do pedido
-  S --> FE : erro "Acesso negado"
-else é o comprador
-  S -> P : mudarStatus(ENTREGUE)
-  alt status atual não é ENVIADO
-    S --> FE : erro "Transição inválida"
-  else status atual é ENVIADO
-    S -> DB : salva pedido ENTREGUE
-    S -> CS : liberarSaldo(pedidoId)
-    CS -> DB : cria lançamentos LIBERACAO\n(−valor PENDENTE, +valor DISPONIVEL)
-    S --> FE : recebimento confirmado
-  end
+== Compradora confirma o recebimento ==
+Compradora -> FE : /conta/compras → "confirmar recebimento"
+FE -> R : POST /pedidos/{id}/confirmar-recebimento (Bearer)
+R -> E : conferirTransicao(ENVIADO → ENTREGUE, compradora)
+alt a vendedora tenta confirmar no lugar dela
+  R --> FE : 403
+else permitido
+  R -> DB : status → ENTREGUE
+  R -> DB : lançamento LIBERACAO: pendente − valor, disponível + valor
+  note right of DB : livro-razão: nada é alterado nem apagado;\no saldo é a soma dos lançamentos
+  R --> FE : 200
 end
 
-opt Vendedor consulta a carteira
-  Vendedor -> FE : abre a carteira
-  FE -> CC : consultarSaldo()
-  CC -> CS : consultarSaldo(vendedorId)
-  CS -> DB : soma os lançamentos por situação
-  CS --> FE : saldo pendente e disponível
+== Vendedora pede o repasse ==
+Vendedora -> FE : /conta/carteira
+FE -> R : GET /carteira (Bearer)
+R -> DB : soma os lançamentos da vendedora
+R --> FE : pendente, disponível, extrato
+Vendedora -> FE : "solicitar repasse"
+FE -> R : POST /carteira/repasses { valor }
+alt valor maior que o saldo disponível
+  R --> FE : 422
+else
+  R -> DB : repasse SOLICITADO
+  R --> FE : 201
 end
+Administradora -> FE : /admin → "marcar como pago"
+FE -> R : POST /admin/repasses/{id}/pagar (Bearer, ADMIN_MASTER)
+R -> DB : repasse PAGO + lançamento REPASSE (disponível − valor)
+R --> FE : 200
 @enduml

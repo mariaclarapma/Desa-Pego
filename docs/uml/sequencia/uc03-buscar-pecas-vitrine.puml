@@ -1,48 +1,42 @@
 @startuml
 !include ../_estilo.iuml
-title UC03 · Buscar peças na vitrine e consultar detalhes — Diagrama de sequência\n<size:11>Requisitos 007 e 008 · Módulo 03 (Catálogo e Detalhes da Peça)</size>
+title UC03 · Buscar peças na vitrine e consultar detalhes — Diagrama de sequência\n<size:11>Requisitos 007 e 008 · catálogo · sem login</size>
 autonumber
 hide footbox
 
-actor Comprador
-participant "Frontend" as FE
-participant ":CatalogoController" as C
-participant ":CatalogoService" as S
-participant "Módulo 02\n(AnunciosPort)" as M2
-participant "Módulo 01\n(ContasPort)" as M1
+actor "Visitante ou compradora" as V
+participant "Site\n(Next.js, renderizado no servidor)" as FE
+box "Serviço do catálogo" #FBFBFB
+  participant "Rotas\n(app.ts)" as R
+  participant ":Loja\n(db.json)" as L
+end box
 
-== Busca na vitrine ==
-Comprador -> FE : digita a busca e escolhe filtros
-FE -> C : listar(filtro)
-C -> S : listar(filtro)
-S -> M2 : buscarAtivos(filtro)
-M2 --> S : página de peças
-S --> FE : página de peças
-FE --> Comprador : mostra foto, título, tamanho, preço e condição
-opt muda filtros, ordenação ou página
-  Comprador -> FE : altera a busca
-  FE -> C : listar(novoFiltro)
-  C --> FE : nova página de peças
+== Vitrine com busca e filtros ==
+V -> FE : /catalogo?busca=jaqueta&categoria=feminino&ordem=menor-preco
+FE -> R : GET /pecas?busca&categoria&tamanho&condicao\n&precoMin&precoMax&ordem&pagina&porPagina
+R -> R : valida os parâmetros (Zod);\ncampo vazio conta como não informado
+alt parâmetro inválido (ex.: preço mínimo maior que o máximo)
+  R --> FE : 400 com o campo errado
+else
+  R -> L : lista as peças
+  R -> R : tira vendidas e ocultadas pela administração;\nbusca sem diferenciar maiúsculas e acentos;\nordena e corta a página
+  R --> FE : 200 { itens, total, pagina, porPagina }
+  FE --> V : grade de peças com paginação
 end
 
 == Detalhes da peça ==
-Comprador -> FE : abre uma peça
-FE -> C : detalhar(anuncioId)
-C -> S : detalhar(anuncioId)
-S -> M2 : buscarPorId(anuncioId)
+V -> FE : abre /peca/{id}
+FE -> R : GET /pecas/{id}
 alt peça não existe ou foi ocultada
-  M2 --> S : nenhum anúncio
-  S --> FE : peça não encontrada
-  FE --> Comprador : página de erro amigável
-else peça encontrada
-  M2 --> S : anúncio (status lido do banco)
-  S -> M1 : obterPerfilPublico(vendedorId)
-  M1 --> S : nome público e cidade
-  S --> FE : detalhes da peça
-  alt peça disponível
-    FE --> Comprador : galeria, dados e botão "Comprar"
-  else peça reservada ou vendida
-    FE --> Comprador : galeria, dados e compra desabilitada
+  R --> FE : 404
+  FE --> V : página "não encontrada"
+else
+  R -> R : reserva vencida volta a contar como disponível;\nquem reservou nunca aparece
+  R --> FE : 200 peça
+  alt disponível
+    FE --> V : fotos, medidas, condição e "colocar na sacola" (UC04)
+  else reservada ou vendida
+    FE --> V : botão trocado por "reservada por outra pessoa"\nou "essa peça já foi vendida"
   end
 end
 @enduml

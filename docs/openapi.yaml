@@ -11,6 +11,7 @@ info:
     - perfil de vendedora e chave Pix (Req. 002, Módulo 01) → `/api/auth/me/vendedora`, `/api/auth/me/pix`
       e `/api/auth/vendedoras/{id}` (serviço de contas). A chave Pix completa nunca sai em nenhuma resposta
       (veja docs/CHAVE-PIX.md).
+    - vitrine com busca, filtros e paginação (Req. 007) → `/api/pecas` (catálogo, porta 3001)
 
     Dinheiro sempre em **centavos inteiros**. Comissão e taxa do Pix em **pontos-base** (1000 = 10,00%).
     Rotas com login usam o token de acesso do serviço de contas (`Authorization: Bearer …`).
@@ -34,6 +35,8 @@ tags:
     description: chamadas do checkout e do webhook do Pix (Módulo 04), com X-API-Key
   - name: vendedora
     description: perfil de vendedora e chave Pix (Req. 002)
+  - name: vitrine
+    description: catálogo público, sem login (Req. 007)
 
 components:
   securitySchemes:
@@ -193,6 +196,40 @@ components:
         comissaoPontosBase: { type: integer }
         taxaPixPontosBase: { type: integer }
         precosSugeridos: { type: array, items: { $ref: "#/components/schemas/FaixaPreco" } }
+    Peca:
+      type: object
+      description: peça como a vitrine pública mostra (sem os campos internos da administração, como `oculta`)
+      required: [id, titulo, categoria, tamanho, condicao, precoCentavos, status, criadoEm]
+      properties:
+        id: { type: string }
+        titulo: { type: string }
+        marca: { type: string }
+        categoria: { type: string, enum: [feminino, masculino, calcados, bolsas, acessorios] }
+        tamanho: { type: string, examples: [M, único, "37"] }
+        condicao: { type: string, enum: [nova_com_etiqueta, otimo_estado, bom_estado, com_marcas_de_uso] }
+        precoCentavos: { type: integer }
+        fotoUrl: { type: string, format: uri }
+        fotoAlt: { type: string }
+        vendedor: { type: object, properties: { nomePublico: { type: string }, cidade: { type: string } } }
+        vendedoraId:
+          type: string
+          description: conta da vendedora (gravada pelo anúncio, Módulo 02). Sem ela, a peça não pode ser vendida.
+        descricao: { type: string }
+        medidas: { type: object, additionalProperties: { type: number }, description: em centímetros }
+        status:
+          type: string
+          enum: [disponivel, reservada, vendida]
+          description: reserva vencida já volta como `disponivel`
+        reservadaAte: { type: [string, "null"], format: date-time }
+        criadoEm: { type: string, format: date-time }
+    PaginaVitrine:
+      type: object
+      required: [itens, total, pagina, porPagina]
+      properties:
+        itens: { type: array, items: { $ref: "#/components/schemas/Peca" }, description: só as peças desta página }
+        total: { type: integer, description: "total de peças que atendem aos filtros, somando todas as páginas" }
+        pagina: { type: integer, minimum: 1 }
+        porPagina: { type: integer, minimum: 1, maximum: 48 }
     Erro:
       type: object
       required: [erro]
@@ -235,6 +272,7 @@ paths:
     post:
       tags: [interno]
       summary: Webhook do Pix confirmado → PAGO; lança o valor da vendedora como pendente
+      description: Idempotente. Se o pedido já está PAGO, responde 200 com ele e não lança de novo na carteira.
       security: [{ apiKey: [] }]
       parameters: [{ $ref: "#/components/parameters/id" }]
       responses:
@@ -246,10 +284,12 @@ paths:
     post:
       tags: [interno]
       summary: Pix expirado → CANCELADO
+      description: Idempotente. Se o pedido já está CANCELADO, responde 200 com ele. Pedido já pago só a administração cancela (403).
       security: [{ apiKey: [] }]
       parameters: [{ $ref: "#/components/parameters/id" }]
       responses:
         "200": { $ref: "#/components/responses/Pedido" }
+        "403": { $ref: "#/components/responses/Proibido" }
         "409": { $ref: "#/components/responses/TransicaoInvalida" }
 
   /gestao/pedidos/compras:
@@ -517,7 +557,7 @@ paths:
               type: object
               required: [nome, email, cpf, senha]
               properties:
-                nome: { type: string, maxLength: 120, description: nome e sobrenome, só letras }
+                nome: { type: string, maxLength: 120, description: "nome e sobrenome, só letras" }
                 email: { type: string, format: email, maxLength: 254 }
                 cpf: { type: string, description: "11 dígitos, com ou sem pontuação", examples: ["529.982.247-25", "52998224725"] }
                 senha: { type: string, minLength: 8, maxLength: 128, description: com pelo menos uma letra e um número }
@@ -643,6 +683,160 @@ paths:
         "403": { $ref: "#/components/responses/Proibido" }
         "404": { $ref: "#/components/responses/NaoEncontrado" }
 
+  /pecas:
+    get:
+      tags: [vitrine]
+      summary: Vitrine com busca, filtros, ordenação e paginação (catálogo). Sem login.
+      description: |
+        Lista só peças **ativas**: ficam de fora as vendidas e as ocultadas pela administração;
+        as reservadas aparecem com `status: reservada`.
+
+        Todos os parâmetros são opcionais e podem ser combinados. Parâmetro vazio (`?busca=`)
+        conta como não informado, como o formulário GET da vitrine envia. Parâmetro repetido
+        (`?categoria=a&categoria=b`) ou fora das regras → **400** com o campo em `campos`.
+
+        Preços em **centavos inteiros** (`precoMax=9500` = até R$ 95,00). Atenção: na URL da
+        página `/catalogo` do site os preços estão em reais; o site converte antes de chamar a API.
+      security: []
+      parameters:
+        - name: busca
+          in: query
+          description: procura no título, na marca e na descrição, sem diferenciar maiúsculas, minúsculas e acentos ("oculos" acha "Óculos")
+          schema: { type: string, maxLength: 100 }
+        - name: categoria
+          in: query
+          schema: { type: string, enum: [feminino, masculino, calcados, bolsas, acessorios] }
+        - name: tamanho
+          in: query
+          description: igual ao tamanho da peça (ex. `M`, `único`, `37`)
+          schema: { type: string, maxLength: 20 }
+        - name: condicao
+          in: query
+          schema: { type: string, enum: [nova_com_etiqueta, otimo_estado, bom_estado, com_marcas_de_uso] }
+        - name: precoMin
+          in: query
+          description: preço mínimo em centavos (o próprio valor entra). Não pode ser maior que `precoMax`.
+          schema: { type: integer, minimum: 0, maximum: 10000000 }
+        - name: precoMax
+          in: query
+          description: preço máximo em centavos (o próprio valor entra)
+          schema: { type: integer, minimum: 0, maximum: 10000000 }
+        - name: ordem
+          in: query
+          description: empate é desempatado pelo id, para a mesma peça não aparecer em duas páginas
+          schema: { type: string, enum: [recentes, menor-preco, maior-preco], default: recentes }
+        - name: pagina
+          in: query
+          description: começa em 1. Uma página além do fim devolve `itens` vazio, com o `total` certo.
+          schema: { type: integer, minimum: 1, maximum: 10000, default: 1 }
+        - name: porPagina
+          in: query
+          schema: { type: integer, minimum: 1, maximum: 48, default: 12 }
+      responses:
+        "200":
+          description: uma página da vitrine
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/PaginaVitrine" }
+              example:
+                itens:
+                  - id: demo-bolsa-palha
+                    titulo: Bolsa de palha com alça
+                    marca: feito à mão
+                    categoria: bolsas
+                    tamanho: único
+                    condicao: otimo_estado
+                    precoCentavos: 8990
+                    status: disponivel
+                    reservadaAte: null
+                    criadoEm: "2026-11-14T12:00:00.000Z"
+                total: 3
+                pagina: 1
+                porPagina: 1
+        "400":
+          description: parâmetro inválido
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Erro" }
+              example: { erro: confira os dados enviados., campos: { precoMin: o preço mínimo não pode ser maior que o máximo. } }
+  /pecas/{id}/reservar:
+    post:
+      tags: [vitrine]
+      summary: Coloca a peça na sacola (catálogo). Reserva por 15 minutos no nome de quem está logada.
+      description: A vendedora não reserva a própria peça (403). Quem reservou nunca aparece na vitrine.
+      security: [{ token: [] }]
+      parameters: [{ $ref: "#/components/parameters/id" }]
+      responses:
+        "200": { description: peça reservada, content: { application/json: { schema: { $ref: "#/components/schemas/Peca" } } } }
+        "401": { $ref: "#/components/responses/SemLogin" }
+        "403": { $ref: "#/components/responses/Proibido" }
+        "404": { $ref: "#/components/responses/NaoEncontrado" }
+        "409": { description: outra pessoa reservou ou comprou antes, content: { application/json: { schema: { $ref: "#/components/schemas/Erro" } } } }
+  /pecas/{id}/liberar:
+    post:
+      tags: [vitrine]
+      summary: Tira a peça da sacola (catálogo). Só quem reservou libera; peça vendida continua vendida.
+      security: [{ token: [] }]
+      parameters: [{ $ref: "#/components/parameters/id" }]
+      responses:
+        "200": { description: peça, content: { application/json: { schema: { $ref: "#/components/schemas/Peca" } } } }
+        "401": { $ref: "#/components/responses/SemLogin" }
+        "403": { $ref: "#/components/responses/Proibido" }
+        "409": { description: a peça está num pedido esperando o Pix, content: { application/json: { schema: { $ref: "#/components/schemas/Erro" } } } }
+  /pedidos:
+    post:
+      tags: [vitrine]
+      summary: Checkout (catálogo). Cria o pedido com o Pix e, pelo CompraFacade, um pedido por vendedora no Módulo 05.
+      description: |
+        Só com peças reservadas por quem está logada. Preço, frete e total são calculados no servidor.
+        Cada vendedora da sacola vira um pedido no Módulo 05 (`/gestao/interno/pedidos`) e cobra o seu
+        frete fixo; o Pix é um só, com o total. Se o Módulo 05 falhar, nada é criado (502) e a reserva continua.
+      security: [{ token: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [comprador, endereco, itens]
+              properties:
+                comprador: { type: object, properties: { nome: { type: string }, email: { type: string, format: email } } }
+                endereco: { type: object, additionalProperties: { type: string } }
+                itens: { type: array, minItems: 1, maxItems: 20, items: { type: string }, description: ids das peças reservadas }
+      responses:
+        "201":
+          description: pedido aguardando pagamento, com `pixCopiaECola` e `pedidosGestao` (um por vendedora)
+        "400": { $ref: "#/components/responses/Invalido" }
+        "401": { $ref: "#/components/responses/SemLogin" }
+        "403": { description: a peça é da própria compradora }
+        "409": { description: "reserva vencida, de outra conta, já num pedido, ou peça sem vendedora cadastrada" }
+        "502": { description: o serviço de pedidos (Módulo 05) recusou ou não respondeu }
+        "503": { description: integração com o Módulo 05 desligada (sem API_KEYS) }
+  /pedidos/{id}:
+    get:
+      tags: [vitrine]
+      summary: Pedido do checkout, com o Pix (catálogo). Só a compradora vê; para as outras contas, 404.
+      security: [{ token: [] }]
+      parameters: [{ $ref: "#/components/parameters/id" }]
+      responses:
+        "200": { description: pedido }
+        "401": { $ref: "#/components/responses/SemLogin" }
+        "404": { $ref: "#/components/responses/NaoEncontrado" }
+  /integracao/pagamentos/{id}/confirmar:
+    post:
+      tags: [interno]
+      summary: Webhook do Pix (catálogo). Confirma os pedidos no Módulo 05 e depois marca as peças como vendidas.
+      description: |
+        Idempotente. O Módulo 05 é avisado antes de o catálogo mudar: se ele falhar (502), nada muda e o
+        webhook pode repetir. Pagamento depois do prazo do Pix cancela o pedido e responde 409.
+      security: [{ apiKey: [] }]
+      parameters: [{ $ref: "#/components/parameters/id" }]
+      responses:
+        "200": { description: pedido pago }
+        "401": { description: X-API-Key ausente ou inválida }
+        "404": { $ref: "#/components/responses/NaoEncontrado" }
+        "409": { description: o prazo do Pix acabou e o pedido foi cancelado }
+        "502": { description: o serviço de pedidos (Módulo 05) não respondeu }
   /config:
     get:
       tags: [admin]

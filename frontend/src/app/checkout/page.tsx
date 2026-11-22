@@ -6,10 +6,12 @@ import { buttonClasses } from "@/components/ui/Button";
 import { SectionHeading } from "@/components/ui/SectionHeading";
 import { buscarPeca } from "@/lib/api/catalogo";
 import { criarPedido } from "@/lib/api/pedidos";
+import { comLogin } from "@/lib/comLogin";
 import { useFrete } from "@/lib/useFrete";
 import { formatarPreco } from "@/lib/format";
 import { pedidoUrl, ROUTES } from "@/lib/routes";
-import { subtotalSacola, useSacola } from "@/lib/sacola";
+import { enviosSacola, rotuloFrete, subtotalSacola, useSacola } from "@/lib/sacola";
+import { useSessaoObrigatoria } from "@/lib/useSessaoObrigatoria";
 import type { EnderecoEntrega } from "@/types/pedido";
 
 const campo =
@@ -33,13 +35,19 @@ export default function CheckoutPage() {
   const router = useRouter();
   const { itens, esvaziar, removerExpirados } = useSacola();
   const [montado, setMontado] = useState(false);
-  const frete = useFrete();
+  // a compra exige login: sem conta, vai para /entrar
+  const sessao = useSessaoObrigatoria();
+  const freteFixo = useFrete();
   const [dados, setDados] = useState(VAZIO);
   const [buscandoCep, setBuscandoCep] = useState(false);
   const [enviando, setEnviando] = useState(false);
   const [erro, setErro] = useState("");
 
   useEffect(() => setMontado(true), []);
+  // nome e e-mail já vêm da conta (dá para mudar o contato da entrega)
+  useEffect(() => {
+    if (sessao) setDados((d) => ({ ...d, nome: d.nome || sessao.usuario.nome, email: d.email || sessao.usuario.email }));
+  }, [sessao]);
   useEffect(() => {
     if (montado && itens.length === 0 && !enviando) router.replace(ROUTES.carrinho);
   }, [montado, itens.length, enviando, router]);
@@ -83,11 +91,13 @@ export default function CheckoutPage() {
 
       const { nome, email, ...endereco } = dados;
       // preço, frete e total são calculados pelo servidor a partir do catálogo
-      const pedido = await criarPedido({
-        comprador: { nome, email },
-        endereco: endereco as EnderecoEntrega,
-        itens: itens.map((i) => i.id),
-      });
+      const pedido = await comLogin((token) =>
+        criarPedido(token, {
+          comprador: { nome, email },
+          endereco: endereco as EnderecoEntrega,
+          itens: itens.map((i) => i.id),
+        }),
+      );
       esvaziar();
       router.push(pedidoUrl(pedido.id));
     } catch (falha) {
@@ -96,9 +106,12 @@ export default function CheckoutPage() {
     }
   }
 
-  if (!montado || itens.length === 0) return <div className="min-h-[60vh]" />;
+  if (!montado || !sessao || itens.length === 0) return <div className="min-h-[60vh]" />;
 
   const subtotal = subtotalSacola(itens);
+  // cada vendedora envia a sua parte e cobra o seu frete fixo (o servidor faz a mesma conta)
+  const envios = enviosSacola(itens);
+  const frete = freteFixo * envios;
 
   return (
     <form onSubmit={finalizar} className="mx-auto grid max-w-6xl gap-10 px-4 py-12 sm:px-6 lg:grid-cols-[1fr_340px] lg:px-8 lg:py-16">
@@ -164,7 +177,7 @@ export default function CheckoutPage() {
         </ul>
         <dl className="space-y-1 border-t-2 border-roxo/20 pt-3 text-sm">
           <div className="flex justify-between">
-            <dt>frete fixo</dt>
+            <dt>{rotuloFrete(envios)}</dt>
             <dd>{formatarPreco(frete)}</dd>
           </div>
           <div className="flex justify-between text-base font-bold">

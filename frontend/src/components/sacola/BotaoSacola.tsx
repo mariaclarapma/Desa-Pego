@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import { buttonClasses } from "@/components/ui/Button";
+import { SemLogin } from "@/lib/comLogin";
 import { RESERVA_MINUTOS } from "@/lib/config";
 import { ROUTES } from "@/lib/routes";
 import { useSacola } from "@/lib/sacola";
@@ -17,15 +18,23 @@ export function BotaoSacola({ peca, status }: { peca: PecaResumo; status: Status
   const [montado, setMontado] = useState(false);
   const [enviando, setEnviando] = useState(false);
   const [aviso, setAviso] = useState("");
+  const [precisaEntrar, setPrecisaEntrar] = useState(false);
   useEffect(() => setMontado(true), []);
 
   async function colocarNaSacola() {
     setEnviando(true);
     setAviso("");
+    setPrecisaEntrar(false);
     try {
       await adicionar(peca);
       router.push(ROUTES.carrinho);
     } catch (erro) {
+      // a sacola exige login: a reserva fica no nome de quem reservou
+      if (erro instanceof SemLogin) {
+        setPrecisaEntrar(true);
+        setEnviando(false);
+        return;
+      }
       setAviso(erro instanceof Error ? erro.message : "Não deu para reservar a peça.");
       router.refresh();
       setEnviando(false);
@@ -53,6 +62,18 @@ export function BotaoSacola({ peca, status }: { peca: PecaResumo; status: Status
       {aviso ? (
         <p role="alert" className="rounded-2xl border-2 border-roxo bg-pervinca-100 px-4 py-3 text-sm">
           {aviso}
+        </p>
+      ) : null}
+      {precisaEntrar ? (
+        <p role="alert" className="rounded-2xl border-2 border-roxo bg-pervinca-100 px-4 py-3 text-sm">
+          pra reservar, entre na sua conta.{" "}
+          <Link href={ROUTES.entrar} className="font-semibold text-violeta underline underline-offset-4">
+            entrar
+          </Link>{" "}
+          ou{" "}
+          <Link href={ROUTES.cadastro} className="font-semibold text-violeta underline underline-offset-4">
+            criar conta
+          </Link>
         </p>
       ) : null}
       <button type="button" onClick={colocarNaSacola} disabled={enviando} className={buttonClasses("violeta", "lg", "w-full")}>

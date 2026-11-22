@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { LogoMark } from "@/components/brand/Logo";
-import { IconInstagram, IconPinterest, IconSparkle, IconTiktok } from "@/components/ui/icons";
+import { IconInstagram, IconPinterest, IconTiktok } from "@/components/ui/icons";
 import { ROUTES } from "@/lib/routes";
 
 const COLUNAS = [
@@ -112,9 +112,6 @@ export function SiteFooter() {
 
         <div className="mt-6 flex flex-col gap-3 border-t border-nevoa/20 pt-6 text-xs text-nevoa/70 sm:flex-row sm:items-center sm:justify-between">
           <p>© {ano} desaPego. Todos os direitos reservados.</p>
-          <p className="flex items-center gap-1.5">
-            feito com <IconSparkle size={11} className="text-rosa" /> por estudantes do CEUB · pagamentos via Pix
-          </p>
         </div>
       </div>
     </footer>

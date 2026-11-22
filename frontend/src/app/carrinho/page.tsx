@@ -10,12 +10,12 @@ import { Sticker } from "@/components/ui/Sticker";
 import { useFrete } from "@/lib/useFrete";
 import { formatarPreco } from "@/lib/format";
 import { catalogoUrl, pecaUrl, ROUTES } from "@/lib/routes";
-import { subtotalSacola, useSacola } from "@/lib/sacola";
+import { enviosSacola, rotuloFrete, subtotalSacola, useSacola } from "@/lib/sacola";
 
 export default function CarrinhoPage() {
   const { itens, remover, removerExpirados } = useSacola();
   const [montado, setMontado] = useState(false);
-  const frete = useFrete();
+  const freteFixo = useFrete();
 
   useEffect(() => {
     setMontado(true);
@@ -38,6 +38,9 @@ export default function CarrinhoPage() {
   }
 
   const subtotal = subtotalSacola(itens);
+  // cada vendedora envia a sua parte e cobra o seu frete fixo
+  const envios = enviosSacola(itens);
+  const frete = freteFixo * envios;
 
   return (
     <div className="mx-auto max-w-6xl px-4 py-12 sm:px-6 lg:px-8 lg:py-16">
@@ -83,7 +86,7 @@ export default function CarrinhoPage() {
               <dd>{formatarPreco(subtotal)}</dd>
             </div>
             <div className="flex justify-between">
-              <dt>frete fixo</dt>
+              <dt>{rotuloFrete(envios)}</dt>
               <dd>{formatarPreco(frete)}</dd>
             </div>
             <div className="flex justify-between border-t-2 border-roxo/20 pt-2 text-base font-bold">

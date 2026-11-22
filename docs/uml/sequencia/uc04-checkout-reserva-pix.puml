@@ -1,62 +1,77 @@
 @startuml
 !include ../_estilo.iuml
-title UC04 · Reservar peça no checkout e gerar cobrança Pix — Diagrama de sequência\n<size:11>Requisitos 010 e 011 · Módulo 04 (Carrinho, Checkout e Pix)</size>
+title UC04 · Reservar peças e fechar a compra com Pix — Diagrama de sequência\n<size:11>Requisitos 010 e 011 · catálogo (sacola e checkout) + Módulo 05 (pedidos) · padrão Facade (CompraFacade)</size>
 autonumber
 hide footbox
 
-actor Comprador
-participant "Frontend" as FE
-participant ":CheckoutController" as C
-participant ":CheckoutService" as S
-participant "Módulo 03\n(CatalogoPort)" as M3
-participant "Módulo 05\n(PedidosPort)" as M5
-participant "Mercado Pago\n(PagamentoProvider)" as MP
+actor Compradora
+participant "Site\n(Next.js)" as FE
 participant "ViaCEP" as CEP
-database "Banco de dados" as DB
+box "Serviço do catálogo" #FBFBFB
+  participant "Rotas\n(app.ts)" as R
+  participant ":CompraFacade" as F
+  participant ":Loja\n(db.json)" as L
+end box
+box "Serviço de pedidos (Módulo 05)" #FBFBFB
+  participant "Rotas internas\n(/interno)" as M5
+  database "PostgreSQL\n(schema pedidos)" as DB
+end box
 
-== Reserva das peças ==
-Comprador -> FE : clica em "Finalizar compra"
-FE -> C : iniciar(anuncioIds)
-C -> S : reservarPecas(compradorId, anuncioIds)
-loop para cada peça do carrinho
-  S -> M3 : reservarPeca(anuncioId)
-  note right of M3 : UPDATE atômico:\nsó reserva se estiver DISPONIVEL
-  break peça já reservada ou vendida
-    S -> M3 : libera as peças já reservadas nesta tentativa
-    S --> FE : erro "Peça indisponível"
+== Colocar na sacola (reserva de 15 minutos) ==
+Compradora -> FE : "colocar na sacola"
+FE -> R : POST /pecas/{id}/reservar\n(Authorization: Bearer)
+alt sem login
+  R --> FE : 401
+  FE --> Compradora : "pra reservar, entre na sua conta"
+else peça é da própria compradora
+  R --> FE : 403
+else outra pessoa reservou ou comprou antes
+  R --> FE : 409 "acabou de ser reservada"
+else peça disponível
+  R -> L : alterarEmFila: status = RESERVADA,\nreservadaAte = agora + 15 min, reservadaPor = compradora
+  R --> FE : 200 (peça reservada)
+  FE --> Compradora : sacola com contagem regressiva
+end
+
+== Checkout ==
+Compradora -> FE : informa o CEP
+FE -> CEP : busca o endereço
+CEP --> FE : rua, bairro, cidade e UF
+Compradora -> FE : "gerar Pix"
+FE -> R : POST /pedidos { comprador, endereco, itens }\n(Authorization: Bearer)
+R -> F : criarCompra(compradoraId, dados)
+F -> L : alterarEmFila (uma compra de cada vez)
+F -> F : confere cada peça: reservada pela compradora,\ncom vendedora cadastrada e fora de outro pedido
+alt reserva vencida, de outra conta ou peça sem vendedora
+  F --> R : Recusa 409
+  R --> FE : 409 "volte à sacola e tente de novo"
+else tudo certo
+  F -> F : agrupa as peças por vendedora
+  loop para cada vendedora da sacola
+    F -> M5 : POST /interno/pedidos (X-API-Key)\n{ compradoraId, vendedoraId, itens, frete fixo, endereço }
+    M5 -> DB : pedido AGUARDANDO_PAGAMENTO,\ncomissão e taxa do Pix congeladas
+    M5 --> F : 201 { id }
   end
-  S -> DB : salva Reserva (prazo padrão de 15 min)
-end
-S --> FE : resumo com peças, frete fixo, total e prazo
-FE --> Comprador : mostra o resumo
-
-== Endereço e pagamento ==
-Comprador -> FE : informa o CEP
-FE -> C : consulta o CEP
-C -> CEP : busca o endereço
-CEP --> C : rua, bairro, cidade e UF
-C --> FE : endereço preenchido
-Comprador -> FE : confirma endereço e pedido
-FE -> C : pagar(anuncioIds, endereco)
-C -> S : gerarCobranca(compradorId, endereco)
-alt reserva expirou
-  S --> FE : erro "Sua reserva expirou"
-else reserva ativa
-  S -> M5 : criarPedido(compradorId, anuncioIds, endereco)
-  note right of M5 : pedido AGUARDANDO_PAGAMENTO,\ncom a comissão vigente guardada
-  M5 --> S : pedidoId
-  S -> MP : criarCobranca(pedidoId, total, expiraEm)
-  MP --> S : QR Code e código copia-e-cola
-  S -> DB : salva CobrancaPix PENDENTE
-  S --> FE : QR Code, copia-e-cola e prazo
-  FE --> Comprador : mostra o Pix para pagar
+  alt o Módulo 05 recusou ou não respondeu
+    F -> M5 : POST /interno/pedidos/{id}/expirar\n(cancela os que já tinham entrado)
+    F --> R : Recusa 502
+    R --> FE : 502 "tente de novo em instantes"
+    note right of F : a reserva continua:\na compradora pode repetir
+  else todos os pedidos entraram
+    F -> L : grava a compra: total = peças + frete × vendedoras,\nPix copia-e-cola, prazo = fim da reserva
+    F --> R : compra
+    R --> FE : 201 { id, pixCopiaECola, pixExpiraEm, pedidosGestao }
+    FE --> Compradora : QR Code, código copia-e-cola e contagem
+  end
 end
 
-== Se o prazo acabar sem pagamento ==
-S -> S : expirarReservas(reservaIds)\n(job agendado no fim do prazo)
-opt pagamento não foi confirmado
-  S -> M5 : cancelar(pedidoId)
-  S -> M3 : liberarPeca(anuncioId)
-  note right of M3 : a peça volta a\nficar DISPONIVEL
+== Se o prazo do Pix acabar ==
+loop a cada minuto (servidor.ts)
+  R -> F : expirarVencidos()
+  opt compra aguardando pagamento com prazo vencido
+    F -> M5 : POST /interno/pedidos/{id}/expirar
+    M5 -> DB : AGUARDANDO_PAGAMENTO → CANCELADO
+    F -> L : compra cancelada; peças voltam a DISPONIVEL
+  end
 end
 @enduml

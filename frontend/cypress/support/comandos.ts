@@ -12,6 +12,11 @@ declare global {
       cadastrar(senha?: string): Chainable<string>;
       /** Primeira peça disponível na vitrine (lida da API). */
       pecaDisponivel(): Chainable<{ id: string; titulo: string; precoCentavos: number }>;
+      /**
+       * Cria uma conta pela API (mais rápido que a tela). O cookie da sessão fica no navegador,
+       * então a pessoa já está logada; devolve o id e o token de acesso.
+       */
+      criarConta(nome?: string): Chainable<{ id: string; email: string; accessToken: string }>;
     }
   }
 }
@@ -44,11 +49,19 @@ Cypress.Commands.add("cadastrar", (senha = "garimpo123") => {
   return cy.wrap(email);
 });
 
+Cypress.Commands.add("criarConta", (nome = "Compradora Cypress") => {
+  const email = `e2e-${Date.now()}-${Cypress._.random(1e6)}@exemplo.com`;
+  return cy
+    .request("POST", "/api/auth/cadastro", { nome, email, cpf: gerarCpf(), senha: "garimpo123" })
+    .then(({ body }) => ({ id: body.usuario.id as string, email, accessToken: body.accessToken as string }));
+});
+
 Cypress.Commands.add("pecaDisponivel", () =>
-  cy.request("/api/pecas").then(({ body }) => {
+  // a vitrine é paginada ({ itens, total, pagina, porPagina }): pede a página maior possível
+  cy.request("/api/pecas?porPagina=48").then(({ body }) => {
     const agora = Date.now();
     type PecaApi = { id: string; titulo: string; precoCentavos: number; status: string; reservadaAte?: string };
-    const livre = (body as PecaApi[]).find(
+    const livre = (body as { itens: PecaApi[] }).itens.find(
       (p) => p.status === "disponivel" || (p.status === "reservada" && !!p.reservadaAte && new Date(p.reservadaAte).getTime() <= agora),
     );
     if (!livre) throw new Error("nenhuma peça disponível na vitrine");

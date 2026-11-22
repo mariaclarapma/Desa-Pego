@@ -1,51 +1,48 @@
 @startuml
 !include ../_estilo.iuml
+!pragma layout smetana
 set separator none
-title Desa Pego · Diagrama de implantação\n<size:11>Infraestrutura planejada para produção (ainda não implantada)</size>
-skinparam nodesep 35
-skinparam ranksep 45
+title Desa Pego · Diagrama de implantação\n<size:11>Produção hoje: um serviço web no Render (plano grátis) e o banco no Supabase · https://desapego.onrender.com</size>
 
-node "Dispositivo do usuário" as DEV {
+node "Dispositivo da usuária" as DEV {
   node "Navegador" as BROWSER
 }
 
-node "Cloudflare\n(CDN e firewall)" as CF <<externo>>
-
-node "AWS · São Paulo (sa-east-1)" as AWS <<planejado>> {
-  node "Load Balancer (ALB)" as ALB
-  node "ECS Fargate" as ECS {
-    artifact "contêiner Docker\nfrontend (Next.js)" as WEB
-    artifact "contêiner Docker\nbackend (NestJS + workers)" as BACK
+node "Render · Ohio (plano grátis)" as RENDER {
+  node "Serviço web (Node.js 22)\nnpm start → concurrently" as WEB {
+    artifact "site\nNext.js · porta pública" as SITE
+    artifact "contas\nExpress · 127.0.0.1:3002" as CONTAS
+    artifact "catalogo\nExpress · 127.0.0.1:3001" as CAT
+    artifact "pedidos\nExpress · 127.0.0.1:3003" as PED
+    artifact "db.json\n(disco temporário)" as JSON
   }
-  database "RDS\nPostgreSQL" as RDS
-  database "ElastiCache\nRedis" as REDIS
-  storage "S3\nfotos das peças" as S3
 }
 
-node "Mercado Pago" as MP <<externo>>
-node "ViaCEP" as CEP <<externo>>
+node "Supabase · Ohio" as SUPA {
+  database "PostgreSQL\nschemas contas e pedidos" as PG
+}
 
-WEB -[hidden]right- BACK
-RDS -[hidden]right- REDIS
-REDIS -[hidden]right- S3
-MP -[hidden]down- CEP
+node "GitHub" as GH {
+  artifact "repositório\n+ GitHub Actions (CI)" as REPO
+}
 
-BROWSER -down-> CF : HTTPS
-CF -down-> ALB : HTTPS
-ALB -down-> WEB
-ALB -down-> BACK
-BACK -down-> RDS
-BACK -down-> REDIS
-BACK -down-> S3
-BACK -right-> MP : cobrança Pix
-BACK -right-> CEP : consulta CEP
-MP -[norank]-> CF : webhook
-BROWSER .[norank].> S3 : envio de fotos\n(URL pré-assinada)
+cloud "ViaCEP" as CEP
 
-legend bottom left
-  O que existe hoje: só a CI no GitHub Actions, que sobe PostgreSQL e Redis
-  temporários para os testes. O deploy ainda está "a fazer" no README.
-  Para desenvolver localmente, o plano é usar Docker Compose
-  (PostgreSQL, Redis e MinIO no lugar do S3) e o Pix simulado.
+BROWSER --> SITE : HTTPS
+BROWSER ..> CEP : HTTPS (busca do CEP)
+SITE --> CONTAS : HTTP local (/api/auth)
+SITE --> CAT : HTTP local (/api)
+SITE --> PED : HTTP local (/api/gestao)
+CAT --> PED : HTTP local /interno\n(X-API-Key)
+CAT --> JSON
+CONTAS --> PG : TLS (DATABASE_URL)
+PED --> PG : TLS (DATABASE_URL)
+REPO --> RENDER : deploy automático\na cada push na main
+
+legend bottom
+  Os três serviços só escutam em 127.0.0.1: de fora, tudo passa pelo site (proxy /api).
+  Segredos (JWT_SECRET, API_KEYS, chaves do CPF, DATABASE_URL) ficam nas variáveis de ambiente do Render.
+  O db.json do catálogo volta à semente a cada deploy: migrar o catálogo para o PostgreSQL é o próximo passo.
+  A arquitetura planejada (AWS, ECS Fargate, Cloudflare) está em implantacao-planejada-aws.puml.
 endlegend
 @enduml

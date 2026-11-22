@@ -15,6 +15,13 @@ export interface Peca {
   precoCentavos: number;
   status: StatusPeca;
   reservadaAte?: string | null;
+  /** Conta que reservou (id do token): só ela libera a reserva e fecha o pedido. Nunca sai na vitrine. */
+  reservadaPor?: string | null;
+  /**
+   * Conta da vendedora (id do serviço de contas). Quem grava é o anúncio (Módulo 02); sem ele,
+   * a peça não pode ser vendida, porque o pedido do Módulo 05 precisa saber de quem é a venda.
+   */
+  vendedoraId?: string;
   /** Ocultada pela administração (anúncio irregular): some da vitrine, da página e da reserva. */
   oculta?: boolean;
   motivoOculta?: string | null;
@@ -23,9 +30,11 @@ export interface Peca {
 
 export interface Pedido {
   id: string;
+  /** Conta da compradora (id do token). Só ela consulta o pedido. Pedidos antigos não têm. */
+  compradoraId?: string;
   comprador: { nome: string; email: string };
   endereco: Record<string, string | undefined>;
-  itens: { id: string; titulo: string; precoCentavos: number }[];
+  itens: { id: string; titulo: string; precoCentavos: number; vendedoraId?: string }[];
   subtotalCentavos: number;
   freteCentavos: number;
   totalCentavos: number;
@@ -34,6 +43,12 @@ export interface Pedido {
   pixExpiraEm: string;
   criadoEm: string;
   pagoEm?: string;
+  canceladoEm?: string;
+  /**
+   * Pedidos correspondentes no Módulo 05 (um por vendedora), criados pelo CompraFacade. São eles
+   * que aparecem em "minhas compras", "minhas vendas" e na carteira.
+   */
+  pedidosGestao?: { vendedoraId: string; pedidoId: string }[];
 }
 
 /** Regras definidas pela administração no painel (sem valor = vale o padrão do servidor). */
@@ -58,10 +73,13 @@ export function abrirLoja(arquivo: string | null, semente: string) {
   let dados: Dados = JSON.parse(readFileSync(arquivo ?? semente, "utf8"));
   let fila: Promise<unknown> = Promise.resolve();
 
-  /** Executa `alterar` sozinho na fila e grava o arquivo no fim. */
-  function alterarEmFila<T>(alterar: (d: Dados) => T): Promise<T> {
-    const proxima = fila.then(() => {
-      const resultado = alterar(dados);
+  /**
+   * Executa `alterar` sozinho na fila e grava o arquivo no fim. Pode ser assíncrono (o checkout
+   * espera o Módulo 05 responder): enquanto isso, as outras alterações aguardam a vez.
+   */
+  function alterarEmFila<T>(alterar: (d: Dados) => T | Promise<T>): Promise<T> {
+    const proxima = fila.then(async () => {
+      const resultado = await alterar(dados);
       if (arquivo) writeFileSync(arquivo, JSON.stringify(dados, null, 2));
       return resultado;
     });
