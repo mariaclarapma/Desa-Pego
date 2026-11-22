@@ -20,19 +20,8 @@ Os diagramas mostram o sistema **como ele está hoje** no código e no ar ([desa
 O único caso de uso ainda não implementado é o UC02 (anúncios, Módulo 02), que segue o planejamento. As versões
 planejadas da arquitetura (NestJS na AWS) continuam guardadas para comparação: veja o [README dos diagramas](../uml/README.md).
 
-## Roteiro sugerido para a apresentação (cerca de 20 minutos)
+## Apresentação
 
-A orientação é mostrar um ou dois exemplos de cada tipo de diagrama e ligá-los às funcionalidades do brechó.
-
-| Tempo | Bloco | O que mostrar |
-| --- | --- | --- |
-| 2 min | Abertura | O problema (roupas paradas no armário), o que o Desa Pego faz e o site no ar. |
-| 4 min | Casos de uso | O diagrama de casos de uso e a descrição do **UC04** com a história de usuário e os critérios. |
-| 3 min | Classes | O diagrama conceitual: compra, pedido por vendedora, carteira como livro-razão e a fórmula do valor da vendedora. |
-| 5 min | Sequência e padrão | A sequência do **UC04** passando pelo `CompraFacade`, a estrutura do Facade e o porquê do padrão (o que ele resolve e os testes). |
-| 3 min | Componentes e implantação | O site e os três serviços, e o Render com o Supabase. Comparar rapidamente com a versão planejada na AWS. |
-| 3 min | Demonstração e perguntas | Uma compra no site: sacola → Pix → "minhas compras" → "minhas vendas". |
-
-> Dica: na demonstração, use duas contas, uma compradora e uma vendedora, para mostrar a venda aparecendo do outro lado.
-> As peças de exemplo pertencem a vendedoras de demonstração, então a parte de "minhas vendas" só aparece com uma peça
-> anunciada por uma conta real, depois que o Módulo 02 estiver pronto.
+O roteiro completo está em [roteiro-apresentacao.md](roteiro-apresentacao.md). Ele tem 20 minutos divididos entre
+4 pessoas, a ordem dos blocos, o que mostrar em cada slide, as frases de passagem entre as pessoas, a preparação e as
+perguntas prováveis.
