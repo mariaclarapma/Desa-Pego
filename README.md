@@ -319,10 +319,10 @@ operações), `frontend/src/app/conta/crud.test.tsx` (telas da conta) e, de pont
 | Rota | Quem usa | O que faz |
 | --- | --- | --- |
 | `GET /pecas`, `GET /pecas/:id` | site | vitrine e página da peça |
-| `POST /pecas/:id/reservar` | site (sacola) | reserva por 15 min; o servidor decide numa fila, então duas pessoas não reservam a mesma peça |
-| `POST /pecas/:id/liberar` | site (sacola) | desfaz a reserva |
-| `POST /pedidos`, `GET /pedidos/:id` | site (checkout) | cria e consulta o pedido; preço, frete e total são calculados no servidor |
-| `POST /integracao/pagamentos/:id/confirmar` | **parceiro, com `X-API-Key`** | o "webhook" do Pix: marca o pedido como pago e as peças como vendidas (idempotente) |
+| `POST /pecas/:id/reservar` | site (sacola), **com login** | reserva por 15 min no nome de quem reservou; o servidor decide numa fila, então duas pessoas não reservam a mesma peça |
+| `POST /pecas/:id/liberar` | site (sacola), **com login** | desfaz a reserva (só quem reservou) |
+| `POST /pedidos`, `GET /pedidos/:id` | site (checkout), **com login** | cria e consulta o pedido; preço, frete e total são calculados no servidor. A compra entra no Módulo 05 (um pedido por vendedora), em "minhas compras", "minhas vendas" e na carteira |
+| `POST /integracao/pagamentos/:id/confirmar` | **parceiro, com `X-API-Key`** | o "webhook" do Pix: confirma a venda no Módulo 05 e marca as peças como vendidas (idempotente) |
 | `GET /integracao/pedidos?status=` | **parceiro, com `X-API-Key`** | exporta os pedidos, por exemplo para um sistema de gestão |
 
 Pelo site, tudo fica sob `/api` (por exemplo, `https://desapego.onrender.com/api/integracao/pedidos`). O botão

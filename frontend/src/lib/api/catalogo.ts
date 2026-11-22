@@ -22,18 +22,20 @@ export function statusAtual(peca: Pick<Peca, "status" | "reservadaAte">, agora =
  * Reserva a peça única por 15 minutos (ADR-003). Quem decide é o servidor: ele confere,
  * numa fila, se a peça continua disponível (409 se outra pessoa reservou antes).
  */
-export async function reservarPeca(id: string): Promise<Peca> {
+export async function reservarPeca(id: string, token: string): Promise<Peca> {
   try {
-    return await api<Peca>(`/pecas/${encodeURIComponent(id)}/reservar`, { method: "POST" });
+    return await api<Peca>(`/pecas/${encodeURIComponent(id)}/reservar`, { method: "POST", headers: { Authorization: `Bearer ${token}` } });
   } catch (erro) {
     if (erro instanceof ApiErro && erro.status === 409) throw new Error("Essa peça acabou de ser reservada ou vendida por outra pessoa.");
     if (erro instanceof ApiErro && erro.status === 404) throw new Error("Essa peça não existe mais.");
+    if (erro instanceof ApiErro && erro.status === 403) throw new Error(erro.detalhe ?? "Você não pode reservar essa peça.");
     throw erro;
   }
 }
 
-/** Desfaz a reserva (ao tirar a peça da sacola). Uma peça vendida continua vendida. */
-export const liberarPeca = (id: string) => api<Peca>(`/pecas/${encodeURIComponent(id)}/liberar`, { method: "POST" });
+/** Desfaz a reserva (ao tirar a peça da sacola). Só quem reservou libera; peça vendida continua vendida. */
+export const liberarPeca = (id: string, token: string) =>
+  api<Peca>(`/pecas/${encodeURIComponent(id)}/liberar`, { method: "POST", headers: { Authorization: `Bearer ${token}` } });
 
 export type Ordem = "recentes" | "menor-preco" | "maior-preco";
 

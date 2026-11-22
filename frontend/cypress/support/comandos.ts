@@ -12,6 +12,11 @@ declare global {
       cadastrar(senha?: string): Chainable<string>;
       /** Primeira peça disponível na vitrine (lida da API). */
       pecaDisponivel(): Chainable<{ id: string; titulo: string; precoCentavos: number }>;
+      /**
+       * Cria uma conta pela API (mais rápido que a tela). O cookie da sessão fica no navegador,
+       * então a pessoa já está logada; devolve o id e o token de acesso.
+       */
+      criarConta(nome?: string): Chainable<{ id: string; email: string; accessToken: string }>;
     }
   }
 }
@@ -42,6 +47,13 @@ Cypress.Commands.add("cadastrar", (senha = "garimpo123") => {
   cy.contains("button[type=submit]", /criar minha conta/i).click();
   cy.location("pathname").should("eq", "/conta");
   return cy.wrap(email);
+});
+
+Cypress.Commands.add("criarConta", (nome = "Compradora Cypress") => {
+  const email = `e2e-${Date.now()}-${Cypress._.random(1e6)}@exemplo.com`;
+  return cy
+    .request("POST", "/api/auth/cadastro", { nome, email, cpf: gerarCpf(), senha: "garimpo123" })
+    .then(({ body }) => ({ id: body.usuario.id as string, email, accessToken: body.accessToken as string }));
 });
 
 Cypress.Commands.add("pecaDisponivel", () =>

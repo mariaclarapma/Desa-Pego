@@ -14,6 +14,7 @@
         "nomePublico": "Bia",
         "cidade": "Brasília, DF"
       },
+      "vendedoraId": "demo-vendedora-bia",
       "descricao": "Couro legítimo, forro íntegro e zíperes funcionando. Modelagem reta, dá pra usar fechada ou aberta.",
       "medidas": {
         "ombro": 42,
@@ -38,6 +39,7 @@
         "nomePublico": "Lu",
         "cidade": "São Paulo, SP"
       },
+      "vendedoraId": "demo-vendedora-lu",
       "descricao": "Nunca usada, ainda com etiqueta. Estruturada, com fecho prateado e alça de mão.",
       "medidas": {
         "largura": 26,
@@ -62,6 +64,7 @@
         "nomePublico": "Mari",
         "cidade": "Belo Horizonte, MG"
       },
+      "vendedoraId": "demo-vendedora-mari",
       "descricao": "Usado duas vezes. Salto 7 cm, solado sem desgaste.",
       "medidas": {
         "salto": 7,
@@ -85,6 +88,7 @@
         "nomePublico": "Rafa",
         "cidade": "Recife, PE"
       },
+      "vendedoraId": "demo-vendedora-rafa",
       "descricao": "Punhos e barra em ribana, leve desbotado na gola (aparece nas fotos).",
       "medidas": {
         "ombro": 50,
@@ -109,6 +113,7 @@
         "nomePublico": "Helô",
         "cidade": "Salvador, BA"
       },
+      "vendedoraId": "demo-vendedora-helo",
       "descricao": "Palha trançada à mão, alça de couro e fecho de botão. Perfeita pra praia.",
       "medidas": {
         "largura": 30,
@@ -132,6 +137,7 @@
         "nomePublico": "Nina",
         "cidade": "Curitiba, PR"
       },
+      "vendedoraId": "demo-vendedora-nina",
       "descricao": "Cetim com caimento fluido, elástico na cintura e na barra, dois bolsos.",
       "medidas": {
         "cintura": 64,
@@ -156,6 +162,7 @@
         "nomePublico": "Clara",
         "cidade": "Porto Alegre, RS"
       },
+      "vendedoraId": "demo-vendedora-clara",
       "descricao": "Tricô grosso cor cru. Tem algumas bolinhas de uso, nada que atrapalhe.",
       "medidas": {
         "comprimento": 70
@@ -178,6 +185,7 @@
         "nomePublico": "Livia",
         "cidade": "Rio de Janeiro, RJ"
       },
+      "vendedoraId": "demo-vendedora-livia",
       "descricao": "Viscose leve, acompanha o cinto. Comprimento abaixo do joelho.",
       "medidas": {
         "busto": 90,
@@ -202,6 +210,7 @@
         "nomePublico": "Duda",
         "cidade": "Goiânia, GO"
       },
+      "vendedoraId": "demo-vendedora-duda",
       "descricao": "Alça de corrente removível, cabe celular, carteira e chave.",
       "medidas": {
         "largura": 22,
@@ -225,6 +234,7 @@
         "nomePublico": "Gabi",
         "cidade": "Florianópolis, SC"
       },
+      "vendedoraId": "demo-vendedora-gabi",
       "descricao": "Solado com marcas de uso, cabedal limpo. Cadarço novo.",
       "medidas": {
         "palmilha": 24
@@ -247,6 +257,7 @@
         "nomePublico": "Tati",
         "cidade": "Fortaleza, CE"
       },
+      "vendedoraId": "demo-vendedora-tati",
       "descricao": "Lentes sem riscos, acompanha estojo.",
       "medidas": {},
       "status": "disponivel",

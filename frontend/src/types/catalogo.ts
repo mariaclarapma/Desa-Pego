@@ -33,6 +33,8 @@ export interface PecaResumo {
     nomePublico: string;
     cidade: string;
   };
+  /** Conta da vendedora. Cada vendedora da sacola cobra um frete fixo (ela envia a sua parte). */
+  vendedoraId?: string;
 }
 
 /** Situação de uma peça única no estoque (ver ADR-003 do documento de arquitetura). */

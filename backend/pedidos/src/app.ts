@@ -111,6 +111,9 @@ export function criarAppPedidos(banco: BancoPedidos, config: ConfigPedidos, agor
       const papel = ator(p);
       // quem não participa do pedido não pode nem saber o status dele
       if (!papel) throw new Recusa(403, "este pedido não é seu.");
+      // webhook repetido (Pix confirmado ou vencido duas vezes): nada muda e responde 200,
+      // senão o provedor de pagamento continuaria reenviando
+      if (papel === "sistema" && p.status === para) return p;
       const veredito = conferirTransicao(p.status, para, papel);
       if (!veredito.ok) {
         if (veredito.motivo === "sem-permissao") throw new Recusa(403, "você não pode fazer isso neste pedido.");

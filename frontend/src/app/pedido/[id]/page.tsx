@@ -7,8 +7,11 @@ import { ApiIndisponivel } from "@/components/ui/ApiIndisponivel";
 import { buttonClasses, ButtonLink } from "@/components/ui/Button";
 import { Sticker } from "@/components/ui/Sticker";
 import { buscarPedido } from "@/lib/api/pedidos";
+import { comLogin } from "@/lib/comLogin";
 import { formatarPreco } from "@/lib/format";
-import { catalogoUrl } from "@/lib/routes";
+import { catalogoUrl, ROUTES } from "@/lib/routes";
+import { rotuloFrete } from "@/lib/sacola";
+import { useSessaoObrigatoria } from "@/lib/useSessaoObrigatoria";
 import type { Pedido } from "@/types/pedido";
 import { confirmarPagamentoDemo } from "./acoes";
 
@@ -36,15 +39,21 @@ function QrIlustrativo({ codigo }: { codigo: string }) {
 export default function PedidoPage() {
   // rota dinâmica /pedido/[id], lida no navegador com useParams()
   const { id } = useParams<{ id: string }>();
+  // só a compradora vê o pedido (tem endereço e e-mail): sem login, vai para /entrar
+  const sessao = useSessaoObrigatoria();
   const [pedido, setPedido] = useState<Pedido | null>(null);
   const [falhou, setFalhou] = useState(false);
   const [pagando, setPagando] = useState(false);
   const [erroPagamento, setErroPagamento] = useState("");
   const [copiado, setCopiado] = useState(false);
 
+  const logada = !!sessao;
   const carregar = useCallback(() => {
-    buscarPedido(id).then(setPedido).catch(() => setFalhou(true));
-  }, [id]);
+    if (!logada) return;
+    comLogin((token) => buscarPedido(token, id))
+      .then(setPedido)
+      .catch(() => setFalhou(true));
+  }, [id, logada]);
   useEffect(carregar, [carregar]);
 
   async function simularPagamento() {
@@ -70,7 +79,8 @@ export default function PedidoPage() {
   if (!pedido) return <div className="min-h-[60vh]" />;
 
   const pago = pedido.status === "pago";
-  const expirado = !pago && new Date(pedido.pixExpiraEm) <= new Date();
+  const expirado = !pago && (pedido.status === "cancelado" || new Date(pedido.pixExpiraEm) <= new Date());
+  const envios = pedido.pedidosGestao?.length || 1;
 
   return (
     <section className="mx-auto max-w-2xl px-4 py-12 text-center sm:px-6 lg:py-16">
@@ -126,7 +136,7 @@ export default function PedidoPage() {
             </li>
           ))}
           <li className="flex justify-between gap-3 text-roxo-soft">
-            <span>frete fixo</span>
+            <span>{rotuloFrete(envios)}</span>
             <span>{formatarPreco(pedido.freteCentavos)}</span>
           </li>
         </ul>
@@ -139,9 +149,16 @@ export default function PedidoPage() {
         </p>
       </div>
 
-      <ButtonLink href={catalogoUrl()} variant="roxo" size="lg" className="mt-10">
-        continuar garimpando
-      </ButtonLink>
+      <div className="mt-10 flex flex-col items-center justify-center gap-3 sm:flex-row">
+        {pago ? (
+          <ButtonLink href={ROUTES.minhasCompras} variant="violeta" size="lg">
+            acompanhar em minhas compras
+          </ButtonLink>
+        ) : null}
+        <ButtonLink href={catalogoUrl()} variant="roxo" size="lg">
+          continuar garimpando
+        </ButtonLink>
+      </div>
     </section>
   );
 }

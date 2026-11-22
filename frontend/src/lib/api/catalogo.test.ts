@@ -94,30 +94,42 @@ describe("listarPecas (a busca e os filtros acontecem no servidor)", () => {
 describe("reservarPeca e liberarPeca", () => {
   afterEach(() => vi.unstubAllGlobals());
 
-  it("pede a reserva ao servidor (POST /pecas/:id/reservar), que decide se ainda está livre", async () => {
+  it("pede a reserva ao servidor (POST /pecas/:id/reservar) com o token de quem está logada", async () => {
     const reservada = peca({ status: "reservada", reservadaAte: new Date(Date.now() + 15 * 60_000).toISOString() });
     const fetchFalso = vi.fn().mockResolvedValue(new Response(JSON.stringify(reservada)));
     vi.stubGlobal("fetch", fetchFalso);
 
-    const resultado = await reservarPeca("p1");
+    const resultado = await reservarPeca("p1", "tok");
     expect(resultado.status).toBe("reservada");
     expect(fetchFalso.mock.calls[0][0]).toBe("/api/pecas/p1/reservar");
-    expect(fetchFalso.mock.calls[0][1]).toMatchObject({ method: "POST" });
+    expect(fetchFalso.mock.calls[0][1]).toMatchObject({ method: "POST", headers: { Authorization: "Bearer tok" } });
   });
 
-  it("traduz 409 (outra pessoa reservou) e 404 (peça sumiu) em mensagens para a pessoa", async () => {
-    const resposta = (status: number) => new Response(JSON.stringify({ erro: "x" }), { status });
-    vi.stubGlobal("fetch", vi.fn().mockResolvedValueOnce(resposta(409)).mockResolvedValueOnce(resposta(404)).mockResolvedValueOnce(resposta(500)));
+  it("traduz 409 (outra pessoa reservou), 404 (peça sumiu) e 403 (peça da própria vendedora); 401 segue como erro da API", async () => {
+    const resposta = (status: number, erro = "x") => new Response(JSON.stringify({ erro }), { status });
+    vi.stubGlobal(
+      "fetch",
+      vi
+        .fn()
+        .mockResolvedValueOnce(resposta(409))
+        .mockResolvedValueOnce(resposta(404))
+        .mockResolvedValueOnce(resposta(403, "essa peça é sua: não dá para colocar na sua sacola."))
+        .mockResolvedValueOnce(resposta(401))
+        .mockResolvedValueOnce(resposta(500)),
+    );
 
-    await expect(reservarPeca("p1")).rejects.toThrow(/reservada ou vendida/);
-    await expect(reservarPeca("p1")).rejects.toThrow(/não existe mais/);
-    await expect(reservarPeca("p1")).rejects.toMatchObject({ status: 500 });
+    await expect(reservarPeca("p1", "tok")).rejects.toThrow(/reservada ou vendida/);
+    await expect(reservarPeca("p1", "tok")).rejects.toThrow(/não existe mais/);
+    await expect(reservarPeca("p1", "tok")).rejects.toThrow(/essa peça é sua/);
+    await expect(reservarPeca("p1", "tok")).rejects.toMatchObject({ status: 401 });
+    await expect(reservarPeca("p1", "tok")).rejects.toMatchObject({ status: 500 });
   });
 
-  it("liberarPeca desfaz a reserva no servidor", async () => {
+  it("liberarPeca desfaz a reserva no servidor, com o token", async () => {
     const fetchFalso = vi.fn().mockResolvedValue(new Response(JSON.stringify(peca({}))));
     vi.stubGlobal("fetch", fetchFalso);
-    await liberarPeca("p1");
+    await liberarPeca("p1", "tok");
     expect(fetchFalso.mock.calls[0][0]).toBe("/api/pecas/p1/liberar");
+    expect(fetchFalso.mock.calls[0][1]).toMatchObject({ headers: { Authorization: "Bearer tok" } });
   });
 });
