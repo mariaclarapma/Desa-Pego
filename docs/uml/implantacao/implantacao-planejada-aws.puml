@@ -1,0 +1,51 @@
+@startuml
+!include ../_estilo.iuml
+set separator none
+title Desa Pego · Diagrama de implantação\n<size:11>Infraestrutura planejada para produção (ainda não implantada)</size>
+skinparam nodesep 35
+skinparam ranksep 45
+
+node "Dispositivo do usuário" as DEV {
+  node "Navegador" as BROWSER
+}
+
+node "Cloudflare\n(CDN e firewall)" as CF <<externo>>
+
+node "AWS · São Paulo (sa-east-1)" as AWS <<planejado>> {
+  node "Load Balancer (ALB)" as ALB
+  node "ECS Fargate" as ECS {
+    artifact "contêiner Docker\nfrontend (Next.js)" as WEB
+    artifact "contêiner Docker\nbackend (NestJS + workers)" as BACK
+  }
+  database "RDS\nPostgreSQL" as RDS
+  database "ElastiCache\nRedis" as REDIS
+  storage "S3\nfotos das peças" as S3
+}
+
+node "Mercado Pago" as MP <<externo>>
+node "ViaCEP" as CEP <<externo>>
+
+WEB -[hidden]right- BACK
+RDS -[hidden]right- REDIS
+REDIS -[hidden]right- S3
+MP -[hidden]down- CEP
+
+BROWSER -down-> CF : HTTPS
+CF -down-> ALB : HTTPS
+ALB -down-> WEB
+ALB -down-> BACK
+BACK -down-> RDS
+BACK -down-> REDIS
+BACK -down-> S3
+BACK -right-> MP : cobrança Pix
+BACK -right-> CEP : consulta CEP
+MP -[norank]-> CF : webhook
+BROWSER .[norank].> S3 : envio de fotos\n(URL pré-assinada)
+
+legend bottom left
+  O que existe hoje: só a CI no GitHub Actions, que sobe PostgreSQL e Redis
+  temporários para os testes. O deploy ainda está "a fazer" no README.
+  Para desenvolver localmente, o plano é usar Docker Compose
+  (PostgreSQL, Redis e MinIO no lugar do S3) e o Pix simulado.
+endlegend
+@enduml

@@ -1,0 +1,49 @@
+@startuml
+!include ../_estilo.iuml
+set separator none
+title Desa Pego · Diagrama de componentes\n<size:11>Monolito modular: uma API NestJS dividida em 5 módulos (ADR-001)</size>
+skinparam componentStyle uml2
+skinparam nodesep 30
+skinparam ranksep 45
+
+actor Usuário as USR
+
+component "Frontend\n(Next.js)" as FE <<em desenvolvimento>>
+
+component "API Desa Pego (NestJS)" as API <<planejado>> {
+  component "01 · Contas e Perfil" as M1
+  component "02 · Anúncios e Simulador" as M2
+  component "03 · Catálogo" as M3
+  component "04 · Carrinho, Checkout e Pix" as M4
+  component "05 · Pedidos, Carteira e Admin" as M5
+  component "app/core\n<size:11>interfaces entre os módulos (ex.: CatalogoPort,</size>\n<size:11>PedidosPort, CarteiraPort, PagamentoProvider)</size>\n<size:11>e cálculo de preço (pricing)</size>" as CORE
+}
+
+database "PostgreSQL" as PG
+database "Redis\n(cache, reservas e filas)" as REDIS
+cloud "Amazon S3\n(fotos)" as S3
+cloud "Mercado Pago\n(Pix)" as MP
+cloud "ViaCEP" as CEP
+
+' ordem dos módulos na tela
+M1 -[hidden]right- M2
+M2 -[hidden]right- M3
+M3 -[hidden]right- M4
+M4 -[hidden]right- M5
+
+USR -down-> FE : HTTPS
+FE -down-> API : REST/JSON
+FE .[norank].> CORE : usa o mesmo\ncálculo de preço
+
+M1 .down.> CORE
+M2 .down.> CORE
+M3 .down.> CORE
+M4 .down.> CORE
+M5 .down.> CORE
+
+API -down-> PG
+API -down-> REDIS
+API -down-> S3 : fotos\n(módulo 02)
+API <-down-> MP : cobrança Pix\ne webhook\n(módulo 04)
+API -down-> CEP : CEP\n(módulo 04)
+@enduml

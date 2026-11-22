@@ -8,7 +8,7 @@ cd "$(dirname "$0")"
 FORMATO="${FORMATO:-svg}"
 PLANTUML="${PLANTUML:-plantuml}"   # ou: PLANTUML="java -jar /caminho/plantuml.jar"
 
-ARQUIVOS=(classes/*.puml sequencia/*.puml componentes/*.puml implantacao/*.puml)
+ARQUIVOS=(casos-de-uso/*.puml classes/*.puml sequencia/*.puml componentes/*.puml implantacao/*.puml padroes/*.puml)
 
 echo "Validando sintaxe de ${#ARQUIVOS[@]} diagramas..."
 $PLANTUML -checkonly -failfast2 "${ARQUIVOS[@]}"

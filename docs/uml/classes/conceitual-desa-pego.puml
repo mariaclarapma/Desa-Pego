@@ -1,0 +1,126 @@
+@startuml
+!include ../_estilo.iuml
+!pragma layout smetana
+title Desa Pego · Diagrama de classes conceitual\n<size:11>Entidades do domínio do brechó e como se relacionam (sem detalhes de implementação)</size>
+hide empty methods
+
+enum Perfil {
+  USUARIO
+  ADMIN
+  ADMIN_MASTER
+}
+
+enum StatusPeca {
+  DISPONIVEL
+  RESERVADA
+  VENDIDA
+}
+
+enum StatusPedido {
+  AGUARDANDO_PAGAMENTO
+  PAGO
+  ENVIADO
+  ENTREGUE
+  CANCELADO
+}
+
+class Usuario {
+  nome
+  email
+  cpf cifrado
+  perfil : Perfil
+  bloqueada
+}
+
+class PerfilVendedora {
+  chave Pix cifrada
+  nome público
+  cidade
+}
+
+class Peca <<anúncio>> {
+  título
+  marca
+  categoria
+  tamanho
+  condição
+  preço
+  fotos: 1 a 5
+  status : StatusPeca
+}
+
+class Reserva {
+  válida até: +15 min
+}
+
+class Compra <<checkout>> {
+  endereço de entrega
+  subtotal
+  frete total
+  total
+  prazo do Pix
+}
+
+class CobrancaPix {
+  código copia-e-cola
+  valor
+  expira em
+  paga em
+}
+
+class Pedido <<uma vendedora>> {
+  status : StatusPedido
+  subtotal
+  frete
+  comissão congelada
+  taxa do Pix congelada
+  valor da vendedora
+}
+
+class ItemPedido {
+  título
+  preço
+  categoria
+}
+
+class LancamentoCarteira {
+  conta: vendedora | comissão | taxa Pix
+  tipo: venda | liberação | estorno | repasse
+  pendente
+  disponível
+}
+
+class Repasse {
+  valor
+  status: solicitado | pago
+}
+
+class ConfiguracaoPlataforma {
+  comissão
+  taxa do Pix
+  frete fixo
+  tabela de preço sugerido
+}
+
+Usuario "1" -- "0..1" PerfilVendedora : vende com >
+PerfilVendedora "1" -- "0..*" Peca : anuncia >
+Usuario "1" -- "0..*" Reserva : faz >
+Reserva "0..1" -- "1" Peca : segura >
+Usuario "1" -- "0..*" Compra : compra >
+Compra "1" *-- "1" CobrancaPix
+Compra "1" *-- "1..*" Pedido : um por vendedora >
+Pedido "1" *-- "1..*" ItemPedido
+ItemPedido "0..1" -- "1" Peca : vende >
+Pedido "1" -- "0..*" LancamentoCarteira : gera >
+PerfilVendedora "1" -- "0..*" LancamentoCarteira : saldo = soma >
+PerfilVendedora "1" -- "0..*" Repasse : recebe >
+Repasse "0..1" -- "0..*" LancamentoCarteira : gera >
+ConfiguracaoPlataforma ..> Pedido : valores congelados\nna compra
+
+
+legend bottom
+  **Carteira como livro-razão:** os lançamentos nunca são alterados nem apagados; o saldo não é um campo, é a soma dos lançamentos.
+  **Valor da vendedora** = peças + frete − comissão (sobre as peças) − taxa do Pix (sobre o total cobrado).
+  **Compra x Pedido:** a compra do checkout tem um Pix só; ela vira um pedido por vendedora, porque cada uma envia a sua parte.
+endlegend
+@enduml

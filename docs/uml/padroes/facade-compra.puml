@@ -1,0 +1,61 @@
+@startuml
+!include ../_estilo.iuml
+!pragma layout smetana
+title Padrão Facade · CompraFacade\n<size:11>backend/catalogo/src/compra-facade.ts · issue #31</size>
+hide empty members
+
+package "Clientes da fachada" {
+  class "Rotas do catálogo\n(app.ts)" as Rotas <<cliente>> {
+    POST /pedidos: checkout
+    POST /integracao/pagamentos/:id/confirmar: webhook do Pix
+  }
+  class "Servidor do catálogo\n(servidor.ts)" as Servidor <<cliente>> {
+    a cada minuto: expirar Pix vencidos
+  }
+}
+
+class CompraFacade <<fachada>> {
+  + criarCompra(compradoraId, dados) : Pedido
+  + confirmarPagamento(pedidoId) : Pedido
+  + expirarVencidos() : número
+  + pecaEmPedidoAberto(pecaId) : boolean
+  - pecaDaCompradora(...)
+  - cancelar(pedido)
+  - avisar(pedido, operação)
+}
+
+package "Subsistemas" {
+  class Loja <<catálogo>> {
+    peças, reservas e pedidos com Pix
+    alterarEmFila(...)
+  }
+  interface GestaoPedidos <<Módulo 05>> {
+    + criar(dados) : { id }
+    + confirmarPagamento(pedidoId)
+    + expirar(pedidoId)
+  }
+  class "gestaoPorHttp" as Http <<implementação>> {
+    chama /interno no serviço de pedidos
+    com X-API-Key
+  }
+  class "Regras" as Regras <<funções>> {
+    statusAtual(peça)
+    pixSimulado(total, txid)
+    Recusa(status, mensagem)
+  }
+}
+
+Rotas --> CompraFacade : usa
+Servidor --> CompraFacade : usa
+CompraFacade --> Loja
+CompraFacade --> GestaoPedidos
+CompraFacade --> Regras
+Http .up.|> GestaoPedidos
+
+legend bottom
+  **Problema:** fechar uma compra envolve três partes: o catálogo (reserva e peças), o serviço de pedidos (pedido, comissão e carteira) e o Pix.
+  Sem a fachada, cada rota precisaria conhecer a ordem das chamadas, desfazer o que deu errado e repetir com segurança.
+  **Solução:** as rotas chamam só a CompraFacade, que coordena os subsistemas numa única operação de alto nível.
+  **Ganho:** a regra da compra fica num lugar só; nos testes, GestaoPedidos é trocado por uma versão falsa.
+endlegend
+@enduml

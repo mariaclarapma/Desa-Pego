@@ -1,45 +1,57 @@
 @startuml
 !include ../_estilo.iuml
-title UC05 · Processar confirmação do pagamento Pix (webhook) — Diagrama de sequência\n<size:11>Requisitos 011 e 014 · Módulos 04 (Pix) e 05 (Pedidos e Carteira)</size>
+title UC05 · Confirmar o pagamento Pix (webhook) — Diagrama de sequência\n<size:11>Requisitos 011 e 014 · catálogo + Módulo 05 (pedidos e carteira) · padrão Facade (CompraFacade)</size>
 autonumber
 hide footbox
 
-actor "Mercado Pago" as MP
-participant ":WebhookPixController" as C
-participant ":PagamentoService" as S
-queue "Fila\n(BullMQ)" as Q
-participant "Módulo 05\n(PedidosPort)" as PED
-participant "Módulo 03\n(CatalogoPort)" as CAT
-participant "Módulo 05\n(CarteiraPort)" as CART
-database "Banco de dados" as DB
+actor "Provedor Pix\n<size:10>(no MVP: botão simular pagamento)</size>" as PIX
+participant "Site\n(server action)" as SA
+box "Serviço do catálogo" #FBFBFB
+  participant "Rotas de integração\n(/integracao)" as R
+  participant ":CompraFacade" as F
+  participant ":Loja\n(db.json)" as L
+end box
+box "Serviço de pedidos (Módulo 05)" #FBFBFB
+  participant "Rotas internas\n(/interno)" as M5
+  database "PostgreSQL\n(schema pedidos)" as DB
+end box
 
-== Recebimento da notificação ==
-MP -> C : notificação de pagamento (webhook)
-C -> S : registrarEvento(cabecalhos, corpo)
-S -> S : valida a assinatura\n(PagamentoProvider)
-alt assinatura inválida
-  S --> C : recusado
-  C --> MP : 401 (evento descartado)
-else evento repetido
-  S -> DB : procura idEventoExterno
-  DB --> S : já existe
-  S --> C : ignorado
-  C --> MP : 200 (nada muda)
-else evento novo
-  S -> DB : salva EventoWebhook
-  S -> Q : coloca o evento na fila
-  C --> MP : 200 (recebido)
+PIX -> SA : pagamento confirmado
+note right of SA : a API key fica no servidor do site;\nnunca chega ao navegador
+SA -> R : POST /integracao/pagamentos/{id}/confirmar\n(X-API-Key)
+alt chave ausente ou errada
+  R --> SA : 401
+else chave válida
+  R -> F : confirmarPagamento(compraId)
+  F -> L : alterarEmFila
+  alt compra já paga (webhook repetido)
+    F --> R : compra como está
+    R --> SA : 200 (nada muda)
+  else prazo do Pix vencido
+    F -> M5 : POST /interno/pedidos/{id}/expirar
+    F -> L : compra cancelada, peças voltam à vitrine
+    R --> SA : 409 "o prazo deste Pix acabou"
+  else aguardando pagamento
+    loop para cada pedido da compra (um por vendedora)
+      F -> M5 : POST /interno/pedidos/{id}/pagamento-confirmado
+      alt pedido já PAGO
+        M5 --> F : 200 (idempotente: não lança de novo)
+      else AGUARDANDO_PAGAMENTO
+        M5 -> DB : status → PAGO
+        M5 -> DB : lançamentos: vendedora (pendente),\ncomissão e taxa do Pix
+        M5 --> F : 200
+      end
+    end
+    alt o Módulo 05 não respondeu
+      F --> R : Recusa 502
+      R --> SA : 502 (nada mudou no catálogo;\no provedor pode repetir)
+    else todos confirmados
+      F -> L : compra PAGA; peças VENDIDAS
+      F --> R : compra paga
+      R --> SA : 200
+      SA --> PIX : recebido
+    end
+  end
 end
-
-== Processamento do pagamento ==
-Q -> S : processarPagamento(eventoId)
-note over S, DB : tudo abaixo acontece numa única transação do banco
-S -> DB : CobrancaPix PENDENTE → PAGA
-S -> PED : marcarComoPago(pedidoId)
-note right of PED : AGUARDANDO_PAGAMENTO → PAGO
-S -> CAT : marcarComoVendida(anuncioId)
-note right of CAT : RESERVADO → VENDIDO
-S -> CART : registrarVenda(pedidoId)
-CART -> DB : cria lançamentos VENDA (PENDENTE),\nCOMISSAO e TAXA_PIX
-S -> DB : marca o evento como processado
+note over F, M5 : ordem que permite repetir: o Módulo 05 é avisado antes de o catálogo mudar
 @enduml

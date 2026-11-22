@@ -1,49 +1,78 @@
 @startuml
 !include ../_estilo.iuml
+!pragma layout smetana
 set separator none
-title Desa Pego · Diagrama de componentes\n<size:11>Monolito modular: uma API NestJS dividida em 5 módulos (ADR-001)</size>
+title Desa Pego · Diagrama de componentes\n<size:11>Sistema como está hoje: site em Next.js e três serviços em Express (TypeScript)</size>
 skinparam componentStyle uml2
-skinparam nodesep 30
-skinparam ranksep 45
 
-actor Usuário as USR
+actor "Usuária" as USR
+actor "Provedor Pix\n(simulado)" as PIX
 
-component "Frontend\n(Next.js)" as FE <<em desenvolvimento>>
-
-component "API Desa Pego (NestJS)" as API <<planejado>> {
-  component "01 · Contas e Perfil" as M1
-  component "02 · Anúncios e Simulador" as M2
-  component "03 · Catálogo" as M3
-  component "04 · Carrinho, Checkout e Pix" as M4
-  component "05 · Pedidos, Carteira e Admin" as M5
-  component "app/core\n<size:11>interfaces entre os módulos (ex.: CatalogoPort,</size>\n<size:11>PedidosPort, CarteiraPort, PagamentoProvider)</size>\n<size:11>e cálculo de preço (pricing)</size>" as CORE
+component "Site (Next.js)" as FE {
+  component "Páginas\n(vitrine, sacola, checkout,\nconta, compras, vendas,\ncarteira, admin)" as PAG
+  component "Proxy /api\n(next.config.ts)" as PROXY
+  component "Server action\nsimular pagamento" as SA
 }
 
-database "PostgreSQL" as PG
-database "Redis\n(cache, reservas e filas)" as REDIS
-cloud "Amazon S3\n(fotos)" as S3
-cloud "Mercado Pago\n(Pix)" as MP
+component "Serviço de contas\n(Módulo 01 · porta 3002)" as CONTAS {
+  component "Cadastro, login,\nsessões e CRUD da conta" as AUTH
+  component "CPF: validação, HMAC\ne AES-256-GCM" as CPFC
+}
+
+component "Serviço do catálogo\n(porta 3001)" as CAT {
+  component "Vitrine, sacola\ne reserva" as VIT
+  component "CompraFacade\n«fachada»" as FAC
+  component "Admin: ocultar\nanúncio e frete" as ADMC
+}
+
+component "Serviço de pedidos\n(Módulo 05 · porta 3003)" as PED {
+  component "Pedidos e máquina\nde estados" as PEDS
+  component "Carteira\n(livro-razão)" as CART
+  component "Admin: comissão, taxa,\nrepasses e dashboard" as ADMP
+}
+
+component "comum/\n<size:11>autenticação (JWT), segurança (CORS,</size>\n<size:11>API key, limite por IP), dinheiro, categorias</size>" as COMUM
+
+database "PostgreSQL\n(Supabase)\nschemas contas e pedidos" as PG
+database "db.json\n(peças e compras)" as JSON
 cloud "ViaCEP" as CEP
 
-' ordem dos módulos na tela
-M1 -[hidden]right- M2
-M2 -[hidden]right- M3
-M3 -[hidden]right- M4
-M4 -[hidden]right- M5
+interface "REST /auth" as I_AUTH
+interface "REST catálogo" as I_CAT
+interface "REST gestão" as I_PED
+interface "REST /interno\n(X-API-Key)" as I_INT
+interface "REST /integracao\n(X-API-Key)" as I_INTEG
 
-USR -down-> FE : HTTPS
-FE -down-> API : REST/JSON
-FE .[norank].> CORE : usa o mesmo\ncálculo de preço
+USR --> PAG : HTTPS
+PAG --> PROXY
+PAG ..> CEP : busca o CEP
+PIX --> SA
+PROXY --> I_AUTH
+PROXY --> I_CAT
+PROXY --> I_PED
+SA --> I_INTEG
 
-M1 .down.> CORE
-M2 .down.> CORE
-M3 .down.> CORE
-M4 .down.> CORE
-M5 .down.> CORE
+I_AUTH -- AUTH
+I_CAT -- VIT
+I_INTEG -- FAC
+I_PED -- PEDS
+I_INT -- PEDS
 
-API -down-> PG
-API -down-> REDIS
-API -down-> S3 : fotos\n(módulo 02)
-API <-down-> MP : cobrança Pix\ne webhook\n(módulo 04)
-API -down-> CEP : CEP\n(módulo 04)
+VIT --> FAC : checkout
+FAC --> I_INT : cria e confirma\num pedido por vendedora
+
+AUTH --> PG
+PEDS --> PG
+CART --> PG
+VIT --> JSON
+
+CONTAS ..> COMUM
+CAT ..> COMUM
+PED ..> COMUM
+
+legend bottom
+  O token de acesso (JWT de 15 minutos) é emitido pelo serviço de contas e verificado pelos outros dois com o mesmo segredo.
+  REST catálogo: /pecas, /pedidos, /admin/pecas e /admin/frete · REST gestão: /pedidos/compras e /pedidos/vendas, /carteira e /admin.
+  As rotas /interno e /integracao exigem X-API-Key; a chave fica só nos servidores, nunca no navegador.
+endlegend
 @enduml

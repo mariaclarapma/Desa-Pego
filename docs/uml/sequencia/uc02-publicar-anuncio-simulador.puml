@@ -1,6 +1,6 @@
 @startuml
 !include ../_estilo.iuml
-title UC02 · Publicar anúncio com simulação de ganho — Diagrama de sequência\n<size:11>Requisitos 004 e 005 (e regra do 002) · Módulo 02 (Anúncios e Simulador)</size>
+title UC02 · Publicar anúncio com simulação de ganho — Diagrama de sequência\n<size:11>Requisitos 004 e 005 (e regra do 002) · Módulo 02 (Anúncios e Simulador) · «planejado: módulo em desenvolvimento»</size>
 autonumber
 hide footbox
 

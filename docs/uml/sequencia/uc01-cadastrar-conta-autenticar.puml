@@ -1,56 +1,65 @@
 @startuml
 !include ../_estilo.iuml
-title UC01 · Cadastrar conta e autenticar-se — Diagrama de sequência\n<size:11>Requisito 001 · Módulo 01 (Contas e Perfil)</size>
+title UC01 · Cadastrar conta e autenticar-se — Diagrama de sequência\n<size:11>Requisito 001 · Módulo 01 (contas) · docs/CPF.md</size>
 autonumber
 hide footbox
 
 actor Visitante
-participant "Frontend" as FE
-participant ":AuthController" as C
-participant ":AuthService" as S
-database "Banco de dados" as DB
+participant "Site\n(Next.js)" as FE
+box "Serviço de contas (Módulo 01)" #FBFBFB
+  participant "Rotas\n(/auth)" as R
+  participant "CPF\n(cpf.ts, cpf-cripto.ts)" as CPF
+  participant "Senhas\n(Argon2id)" as S
+  database "PostgreSQL\n(schema contas)" as DB
+end box
 
 == Cadastro ==
-Visitante -> FE : preenche nome, e-mail, CPF e senha
-FE -> C : cadastrar(nome, email, cpf, senha)
-C -> S : cadastrar(nome, email, cpf, senha)
-S -> S : validarCpf(cpf)
-alt CPF inválido
-  S --> FE : erro "CPF inválido"
-else CPF válido
-  S -> DB : busca o e-mail e o hash do CPF
-  DB --> S : resultado
-  alt e-mail ou CPF já cadastrado
-    S --> FE : erro "E-mail ou CPF já cadastrado"
-  else dados novos
-    S -> S : gera hash da senha (Argon2id)\ne criptografa o CPF
-    S -> DB : salva usuário
-    S --> FE : conta criada
+Visitante -> FE : nome, e-mail, CPF e senha
+FE -> FE : valida no navegador\n(dígitos do CPF, senha forte)
+FE -> R : POST /auth/cadastro
+alt mais de 10 cadastros na hora pelo mesmo IP
+  R --> FE : 429
+else dados inválidos (o backend valida de novo)
+  R --> FE : 400 com o campo errado
+else
+  R -> CPF : hash HMAC-SHA256 (unicidade)\ne cifra AES-256-GCM (guarda)
+  R -> S : hash da senha
+  R -> DB : INSERT usuário
+  alt e-mail ou CPF já cadastrados (UNIQUE)
+    DB --> R : violação de unicidade
+    R --> FE : 409 mensagem clara
+  else conta criada
+    R -> DB : cria sessão (hash do refresh token)
+    R --> FE : 201 { usuario, accessToken (JWT 15 min) }\n+ cookie httpOnly com o refresh token
+    FE --> Visitante : vai para /conta
   end
 end
-FE --> Visitante : mostra o resultado
 
 == Login ==
-Visitante -> FE : informa e-mail e senha
-FE -> C : login(email, senha)
-C -> S : login(email, senha)
-alt muitas tentativas erradas
-  S --> FE : erro "Tente novamente mais tarde"
-else e-mail ou senha incorretos
-  S -> S : registrarTentativaFalha(email)
-  S --> FE : erro "E-mail ou senha inválidos"
-  note right of FE : mensagem genérica: não diz\nse o e-mail existe
-else credenciais corretas
-  S -> DB : salva refresh token
-  S --> FE : JWT + refresh token (cookie httpOnly)
+Visitante -> FE : e-mail e senha
+FE -> R : POST /auth/login
+alt 5 erros em 15 minutos (por e-mail ou IP)
+  R --> FE : 429 "espere alguns minutos"
+else
+  R -> DB : busca a conta pelo e-mail
+  R -> S : verifica a senha
+  alt e-mail não existe ou senha errada
+    R --> FE : 401 erro genérico (não diz qual)
+  else conta bloqueada pela administração
+    R --> FE : 403
+  else credenciais certas
+    R -> DB : cria sessão
+    R --> FE : 200 { usuario, accessToken } + cookie httpOnly
+  end
 end
-FE --> Visitante : entra na conta ou mostra o erro
 
-opt Logout
-  Visitante -> FE : sair
-  FE -> C : logout(refreshToken)
-  C -> S : logout(refreshToken)
-  S -> DB : revoga o refresh token
-  S --> FE : sessão encerrada
+== Renovação da sessão ==
+FE -> R : POST /auth/refresh (cookie)
+alt refresh token já usado (possível roubo)
+  R -> DB : derruba todas as sessões da conta
+  R --> FE : 401
+else válido
+  R -> DB : troca o refresh token (rotação)
+  R --> FE : 200 novo accessToken + novo cookie
 end
 @enduml
