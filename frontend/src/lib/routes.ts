@@ -16,6 +16,7 @@ export const ROUTES = {
   minhasVendas: "/conta/vendas",
   meusAnuncios: "/conta/anuncios",
   carteira: "/conta/carteira",
+  vendedora: "/conta/vendedora",
   admin: "/admin",
   carrinho: "/carrinho",
   checkout: "/checkout",

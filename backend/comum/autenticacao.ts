@@ -12,6 +12,8 @@ export interface Autenticada {
   id: string;
   nome: string;
   perfil: Perfil;
+  /** Tem chave Pix cadastrada (Req. 002): só assim pode publicar anúncio. */
+  temChavePix: boolean;
 }
 
 export async function lerToken(cabecalho: string | undefined, segredo: Uint8Array): Promise<Autenticada | null> {
@@ -20,7 +22,12 @@ export async function lerToken(cabecalho: string | undefined, segredo: Uint8Arra
   try {
     const { payload } = await jwtVerify(token, segredo, { algorithms: ["HS256"] });
     if (!payload.sub) return null;
-    return { id: String(payload.sub), nome: String(payload.nome ?? ""), perfil: String(payload.perfil) as Perfil };
+    return {
+      id: String(payload.sub),
+      nome: String(payload.nome ?? ""),
+      perfil: String(payload.perfil) as Perfil,
+      temChavePix: payload.temChavePix === true,
+    };
   } catch {
     return null;
   }
@@ -40,6 +47,26 @@ export function exigirLogin(segredo: Uint8Array) {
 export function exigirAdminMaster(req: Request, res: Response, next: NextFunction) {
   if ((res.locals.usuaria as Autenticada | undefined)?.perfil !== "ADMIN_MASTER") {
     return res.status(403).json({ erro: "acesso restrito à administração." });
+  }
+  next();
+}
+
+/**
+ * Regra do Req. 002 para o Módulo 02 (Issue #004): só quem tem chave Pix cadastrada publica anúncio.
+ * Use depois de exigirLogin, na rota de criar/publicar anúncio:
+ *
+ *   app.post("/anuncios", exigirLogin(segredo), exigirChavePix, ...)
+ *
+ * Lê o campo `temChavePix` do token de acesso. Ao cadastrar a chave, o serviço de contas devolve
+ * um token novo já com o campo, então a vendedora não precisa entrar de novo.
+ */
+export const podeAnunciar = (usuaria: Pick<Autenticada, "temChavePix"> | undefined) => usuaria?.temChavePix === true;
+
+export const ERRO_SEM_CHAVE_PIX = "cadastre sua chave Pix na sua conta para publicar anúncios.";
+
+export function exigirChavePix(_req: Request, res: Response, next: NextFunction) {
+  if (!podeAnunciar(res.locals.usuaria as Autenticada | undefined)) {
+    return res.status(403).json({ erro: ERRO_SEM_CHAVE_PIX, codigo: "CHAVE_PIX_AUSENTE" });
   }
   next();
 }

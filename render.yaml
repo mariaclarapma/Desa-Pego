@@ -42,6 +42,11 @@ services:
       # origem do site liberada no CORS (troque se usar outro domínio)
       - key: CORS_ORIGENS
         value: https://desapego.onrender.com
+      # chave que cifra as chaves Pix (Req. 002): gere com `openssl rand -base64 32`, cole no painel
+      # e guarde uma cópia no cofre de senhas do grupo. Não use generateValue: se o serviço for
+      # recriado, uma chave nova deixaria ilegíveis as chaves Pix salvas. Veja docs/CHAVE-PIX.md
+      - key: PIX_CRIPTO_CHAVE
+        sync: false
       # administradora master (Lucy): preencha no painel do Render, nunca no repositório
       - key: ADMIN_MASTER_EMAIL
         sync: false

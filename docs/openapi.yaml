@@ -8,6 +8,9 @@ info:
     - usuárias do painel → `/api/auth/admin/*` (serviço de contas, porta 3002)
     - cadastro com CPF (Req. 001) → `/api/auth/cadastro` (serviço de contas, porta 3002)
     - anúncios e frete do painel → `/api/admin/*` e `/api/config` (catálogo, porta 3001)
+    - perfil de vendedora e chave Pix (Req. 002, Módulo 01) → `/api/auth/me/vendedora`, `/api/auth/me/pix`
+      e `/api/auth/vendedoras/{id}` (serviço de contas). A chave Pix completa nunca sai em nenhuma resposta
+      (veja docs/CHAVE-PIX.md).
     - vitrine com busca, filtros e paginação (Req. 007) → `/api/pecas` (catálogo, porta 3001)
 
     Dinheiro sempre em **centavos inteiros**. Comissão e taxa do Pix em **pontos-base** (1000 = 10,00%).
@@ -30,6 +33,8 @@ tags:
     description: cadastro (Req. 001). O CPF é recebido, mas nunca devolvido em nenhuma resposta.
   - name: interno
     description: chamadas do checkout e do webhook do Pix (Módulo 04), com X-API-Key
+  - name: vendedora
+    description: perfil de vendedora e chave Pix (Req. 002)
   - name: vitrine
     description: catálogo público, sem login (Req. 007)
 
@@ -54,6 +59,40 @@ components:
       in: query
       schema: { $ref: "#/components/schemas/StatusPedido" }
   schemas:
+    TipoChavePix:
+      type: string
+      enum: [cpf, email, telefone, aleatoria]
+    ChavePixResumo:
+      type: object
+      description: A chave Pix como a própria vendedora vê. Nunca traz a chave completa.
+      required: [tipo, mascarada, atualizadaEm]
+      properties:
+        tipo: { $ref: "#/components/schemas/TipoChavePix" }
+        mascarada: { type: string, examples: ["***.982.247-**", "an***@exemplo.com", "(61) *****-5678", "3f2a****…****9c1d"] }
+        atualizadaEm: { type: string, format: date-time }
+    PerfilVendedora:
+      type: object
+      required: [id, nomePublico, nomeNaVitrine, cidade, pix, pixIndisponivel]
+      properties:
+        id: { type: string, format: uuid }
+        nomePublico: { type: [string, "null"], description: "null = a vitrine usa o primeiro nome" }
+        nomeNaVitrine: { type: string, description: nome público ou, se vazio, o primeiro nome }
+        cidade: { type: [string, "null"] }
+        pix:
+          oneOf: [{ $ref: "#/components/schemas/ChavePixResumo" }, { type: "null" }]
+        pixIndisponivel:
+          type: boolean
+          description: |
+            true = existe uma chave salva que não pode ser lida (PIX_CRIPTO_CHAVE trocada ou cifra corrompida).
+            Nesse caso `pix` é null, o token sai com temChavePix false e a vendedora precisa cadastrar de novo.
+    PerfilPublicoVendedora:
+      type: object
+      description: Sem e-mail, nome completo, CPF ou chave Pix.
+      required: [id, nomePublico, cidade]
+      properties:
+        id: { type: string, format: uuid }
+        nomePublico: { type: string }
+        cidade: { type: [string, "null"] }
     StatusPedido:
       type: string
       enum: [AGUARDANDO_PAGAMENTO, PAGO, ENVIADO, ENTREGUE, CANCELADO]
@@ -540,6 +579,76 @@ paths:
           description: "e-mail (`campos.email`) ou CPF (`campos.cpf`) já cadastrado; a resposta não repete o CPF nem diz de quem é a conta"
           content: { application/json: { schema: { $ref: "#/components/schemas/Erro" } } }
         "429": { description: muitos cadastros do mesmo IP, content: { application/json: { schema: { $ref: "#/components/schemas/Erro" } } } }
+
+  /auth/me/vendedora:
+    get:
+      tags: [vendedora]
+      summary: Perfil de vendedora da conta logada (nome público, cidade e chave Pix mascarada)
+      security: [{ token: [] }]
+      responses:
+        "200": { description: perfil (Cache-Control no-store), content: { application/json: { schema: { type: object, properties: { vendedora: { $ref: "#/components/schemas/PerfilVendedora" } } } } } }
+        "401": { $ref: "#/components/responses/SemLogin" }
+    patch:
+      tags: [vendedora]
+      summary: Edita nome público (opcional; vazio volta ao primeiro nome) e cidade
+      security: [{ token: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [cidade]
+              properties:
+                nomePublico: { type: [string, "null"], maxLength: 40, description: "letras, números, espaço e . - _ &; no máximo 10 números (nada que possa ser um CPF). Vazio, null ou ausente = null (vitrine usa o primeiro nome)" }
+                cidade: { type: string, minLength: 2, maxLength: 60, examples: ["Brasília/DF"] }
+      responses:
+        "200": { description: perfil atualizado, content: { application/json: { schema: { type: object, properties: { vendedora: { $ref: "#/components/schemas/PerfilVendedora" } } } } } }
+        "400": { $ref: "#/components/responses/Invalido" }
+        "401": { $ref: "#/components/responses/SemLogin" }
+  /auth/me/pix:
+    put:
+      tags: [vendedora]
+      summary: Cadastra ou troca a chave Pix (pede a senha atual). Devolve um token novo com temChavePix.
+      description: |
+        A chave é validada conforme o tipo, guardada cifrada (AES-256-GCM) e devolvida só mascarada.
+        Senha errada conta no limite do login (5 erros → 429 por 15 minutos).
+      security: [{ token: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [tipo, chave, senhaAtual]
+              properties:
+                tipo: { $ref: "#/components/schemas/TipoChavePix" }
+                chave: { type: string, maxLength: 120, examples: ["529.982.247-25", "(61) 91234-5678"] }
+                senhaAtual: { type: string }
+      responses:
+        "200":
+          description: chave salva
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  vendedora: { $ref: "#/components/schemas/PerfilVendedora" }
+                  accessToken: { type: string, description: "JWT com temChavePix: true" }
+                  expiraEm: { type: string, format: date-time }
+        "400": { $ref: "#/components/responses/Invalido" }
+        "401": { $ref: "#/components/responses/SemLogin" }
+        "403": { description: senha atual incorreta }
+        "429": { description: muitas senhas erradas seguidas }
+  /auth/vendedoras/{id}:
+    get:
+      tags: [vendedora]
+      summary: Perfil público da vendedora (sem e-mail, documento ou chave Pix). Sem login.
+      security: []
+      parameters: [{ $ref: "#/components/parameters/id" }]
+      responses:
+        "200": { description: perfil público, content: { application/json: { schema: { type: object, properties: { vendedora: { $ref: "#/components/schemas/PerfilPublicoVendedora" } } } } } }
+        "404": { description: "não existe, ainda não é vendedora (sem chave Pix) ou está bloqueada" }
 
   /auth/admin/usuarios:
     get:

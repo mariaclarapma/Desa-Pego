@@ -1,4 +1,5 @@
 import { randomBytes } from "node:crypto";
+import { lerChaveCripto } from "../../comum/chave-pix.js";
 import { lerOrigens, lerTrustProxy } from "../../comum/seguranca.js";
 import { chavesCpf, chavesCpfTemporarias, SEGREDO_MINIMO, type ChavesCpf } from "./cpf-cripto.js";
 
@@ -24,6 +25,11 @@ export interface Config {
   cadastrosPorHora?: number;
   /** Chaves que protegem o CPF no banco (CPF_CRIPTO_CHAVE e CPF_HASH_CHAVE). Veja cpf-cripto.ts. */
   cpf: ChavesCpf;
+  /**
+   * Chave de 32 bytes que cifra as chaves Pix no banco (PIX_CRIPTO_CHAVE). Sem ela, o app usa
+   * uma chave temporária (só para testes e banco em memória). Veja docs/CHAVE-PIX.md.
+   */
+  pixCriptoChave?: Buffer;
 }
 
 export function lerConfig(env: NodeJS.ProcessEnv = process.env): Config {
@@ -38,6 +44,16 @@ export function lerConfig(env: NodeJS.ProcessEnv = process.env): Config {
   const urlBanco = env.DATABASE_URL || undefined;
   if (producao && !urlBanco) throw new Error("DATABASE_URL é obrigatório em produção (senão as contas somem a cada reinício).");
   const cpf = lerChavesCpf(env, producao || !!urlBanco);
+  // Req. 002: perder ou trocar esta chave torna ilegíveis as chaves Pix já salvas.
+  // Por isso ela é obrigatória sempre que o banco é persistente, e não só em produção.
+  let pixCriptoChave = lerChaveCripto(env.PIX_CRIPTO_CHAVE);
+  if (!pixCriptoChave) {
+    if (producao || urlBanco) {
+      throw new Error("PIX_CRIPTO_CHAVE é obrigatória com DATABASE_URL ou em produção (gere com: openssl rand -base64 32). Veja docs/CHAVE-PIX.md.");
+    }
+    pixCriptoChave = randomBytes(32);
+    console.warn("[contas] PIX_CRIPTO_CHAVE não definida: usando uma chave temporária (banco em memória).");
+  }
   return {
     porta: Number(env.PORTA_CONTAS ?? 3002),
     urlBanco,
@@ -51,6 +67,7 @@ export function lerConfig(env: NodeJS.ProcessEnv = process.env): Config {
     origens: lerOrigens(env),
     cadastrosPorHora: Number(env.LIMITE_CADASTROS_POR_HORA) || 10,
     cpf,
+    pixCriptoChave,
   };
 }
 
