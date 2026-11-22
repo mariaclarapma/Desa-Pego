@@ -1,0 +1,63 @@
+@startuml
+!include ../_estilo.iuml
+!pragma layout smetana
+title Desa Pego · Diagrama de casos de uso\n<size:11>MVP do brechó online: 6 casos de uso descritos em docs/aps/casos-de-uso.md (UC01 a UC06) e as tarefas da administração (UC07)</size>
+left to right direction
+skinparam packageStyle rectangle
+skinparam usecase {
+  BackgroundColor #FFFFFF
+  BorderColor #555555
+}
+skinparam actor {
+  BackgroundColor #FFFFFF
+  BorderColor #555555
+}
+
+actor "Visitante" as Visitante
+actor "Usuária cadastrada" as Usuaria
+actor "Compradora" as Compradora
+actor "Vendedora" as Vendedora
+actor "Administradora" as Admin
+actor "Provedor Pix\n<size:10>(simulado no MVP)</size>" as Pix <<sistema>>
+
+Compradora -up-|> Usuaria
+Vendedora -up-|> Usuaria
+
+rectangle "Desa Pego (brechó online)" {
+  usecase "UC01 · Cadastrar conta\ne autenticar-se" as UC01
+  usecase "UC02 · Publicar anúncio\ncom simulação de ganho" as UC02
+  usecase "UC03 · Buscar peças na vitrine\ne consultar detalhes" as UC03
+  usecase "UC04 · Reservar peças e\nfechar a compra com Pix" as UC04
+  usecase "UC05 · Confirmar o\npagamento Pix" as UC05
+  usecase "UC06 · Acompanhar a entrega\ne liberar o saldo" as UC06
+  usecase "UC07 · Administrar a plataforma\n<size:10>(comissão, frete, taxa do Pix, repasses,</size>\n<size:10>ocultar anúncios, bloquear contas)</size>" as UC07
+
+  usecase "Validar CPF" as CPF
+  usecase "Simular ganho\n(preço sugerido)" as SIM
+  usecase "Reservar peça\npor 15 minutos" as RES
+  usecase "Gerar cobrança Pix" as GERAR
+  usecase "Cancelar pedido\ncom Pix vencido" as EXP
+}
+
+Visitante --> UC01
+Visitante --> UC03
+Usuaria --> UC01
+Compradora --> UC03
+Compradora --> UC04
+Compradora --> UC06
+Vendedora --> UC02
+Vendedora --> UC06
+Admin --> UC07
+Pix --> UC05
+
+UC01 ..> CPF : <<include>>
+UC02 ..> SIM : <<include>>
+UC04 ..> RES : <<include>>
+UC04 ..> GERAR : <<include>>
+EXP .up.> UC04 : <<extend>>\n(prazo do Pix acabou)
+
+note bottom of UC04
+  Implementado com o padrão Facade (CompraFacade):
+  um pedido por vendedora no Módulo 05.
+end note
+@enduml

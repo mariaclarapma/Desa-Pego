@@ -13,7 +13,7 @@
 ![Redis](https://img.shields.io/badge/Redis-7-DC382D?logo=redis&logoColor=white)
 ![Pix](https://img.shields.io/badge/pagamento-Pix-32BCAD)
 
-[Requisitos](REQUISITOS.md) · [Arquitetura](docs/ARQUITETURA.md) · [Issues](https://github.com/mariaclarapma/Desa-Pego/issues) · [Quadro do projeto](https://github.com/users/mariaclarapma/projects/2) · [Como contribuir](CONTRIBUTING.md)
+[Requisitos](REQUISITOS.md) · [Arquitetura](docs/ARQUITETURA.md) · [Diagramas UML](docs/uml/README.md) · [Entregáveis da APS](docs/aps/README.md) · [Issues](https://github.com/mariaclarapma/Desa-Pego/issues) · [Quadro do projeto](https://github.com/users/mariaclarapma/projects/2) · [Como contribuir](CONTRIBUTING.md)
 
 </div>
 
