@@ -71,7 +71,7 @@ export interface ConfiguracaoLoja {
   freteCentavos?: number;
 }
 
-interface Dados {
+export interface Dados {
   pecas: Peca[];
   pedidos: Pedido[];
   configuracao?: ConfiguracaoLoja;

@@ -44,9 +44,15 @@ export interface DadosAnuncio {
   fotos: string[];
 }
 
+/** Envio autorizado de uma foto: para onde e como o navegador manda o arquivo. */
 export interface FotoPreparada {
   chave: string;
   urlUpload: string;
+  /** PUT com o arquivo no corpo (armazenamento local) ou POST de formulário (Amazon S3). */
+  metodo: "PUT" | "POST";
+  /** Campos assinados do POST; vão no formulário antes do arquivo. */
+  campos: Record<string, string>;
+  expiraEm: string;
   url: string;
 }
 
@@ -80,17 +86,31 @@ export const anuncios = {
     chamarComToken<{ fotos: FotoPreparada[] }>(token, "POST", "/anuncios/fotos", { arquivos }).then((r) => r.fotos),
 };
 
-/** Sobe o arquivo pela URL pré-assinada (não leva o token: a assinatura da URL autoriza). */
-export async function subirFoto(urlUpload: string, arquivo: File): Promise<void> {
+/**
+ * Sobe o arquivo pela URL pré-assinada (não leva o token: a assinatura autoriza). No S3 é um POST de
+ * formulário: os campos assinados vêm primeiro e o arquivo por último, como o S3 exige.
+ */
+export async function subirFoto(envio: Pick<FotoPreparada, "urlUpload" | "metodo" | "campos">, arquivo: File): Promise<void> {
+  let pedido: RequestInit;
+  if (envio.metodo === "POST") {
+    const formulario = new FormData();
+    for (const [campo, valor] of Object.entries(envio.campos)) formulario.append(campo, valor);
+    formulario.append("file", arquivo);
+    pedido = { method: "POST", body: formulario };
+  } else {
+    pedido = { method: "PUT", headers: { "Content-Type": arquivo.type }, body: arquivo };
+  }
+
   let resposta: Response;
   try {
-    resposta = await fetch(urlUpload, { method: "PUT", headers: { "Content-Type": arquivo.type }, body: arquivo });
+    resposta = await fetch(envio.urlUpload, pedido);
   } catch {
     throw new ErroApi(0, "não deu para enviar a foto. verifique sua conexão.");
   }
   if (!resposta.ok) {
+    // o S3 responde em XML; a API local, em JSON
     const dados = await resposta.json().catch(() => null);
-    throw new ErroApi(resposta.status, dados?.erro ?? "não deu para enviar a foto.");
+    throw new ErroApi(resposta.status, dados?.erro ?? "não deu para enviar a foto. confira se é JPG, PNG ou WebP de até 5 MB.");
   }
 }
 

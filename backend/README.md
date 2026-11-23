@@ -135,9 +135,9 @@ contas (`GET /auth/vendedoras/:id`, em `CONTAS_API_URL`).
 
 | Método e rota | Uso |
 | --- | --- |
-| `POST /anuncios/fotos` | **login + chave Pix** · URLs pré-assinadas para 1 a 5 fotos (JPG, PNG ou WebP, até 5 MB) · 201, 400, 401, 403 |
-| `PUT /fotos/:chave` | envio pela URL assinada (sem token) · confere assinatura, prazo, tipo e os primeiros bytes · 204, 403, 409, 413, 415 |
-| `GET /fotos/:chave` | foto já enviada (pública) |
+| `POST /anuncios/fotos` | **login + chave Pix** · envios pré-assinados para 1 a 5 fotos (JPG, PNG ou WebP, até 5 MB): POST direto ao S3 ou PUT local · 201, 400, 401, 403 |
+| `PUT /fotos/:chave` | **só armazenamento local** · envio pela URL assinada (sem token) · confere assinatura, prazo, tipo e os primeiros bytes · 204, 403, 409, 413, 415 |
+| `GET /fotos/:chave` | **só armazenamento local** · foto já enviada (pública) |
 | `POST /anuncios` | **login + chave Pix** · publica · 201, 400, 401, 403 (sem chave Pix ou sem perfil de vendedora), 503 |
 | `GET /anuncios/meus`, `GET /anuncios/:id` | **login** · os anúncios da própria conta (de outra conta: 403) |
 | `PUT /anuncios/:id` | **login + chave Pix** · edita · 403 (de outra conta), 409 (reservada, vendida ou num pedido) |
@@ -148,8 +148,10 @@ O **simulador de ganho** do formulário usa `calcularRepasse`, de `core/src/pric
 arquitetura), a mesma função que o serviço de pedidos usa para gravar o pedido e a carteira. Comissão e taxa do Pix
 vêm de `GET /gestao/config`, e o frete de `GET /config`.
 
-> **Fotos:** por enquanto ficam numa pasta local (`backend/fotos/`), que no Render é apagada a cada deploy. Antes de
-> produção, o grupo precisa escolher entre Supabase Storage e Amazon S3. Veja [`docs/FOTOS.md`](../docs/FOTOS.md).
+> **Fotos:** com `S3_BUCKET` definido, ficam no Amazon S3 (POST pré-assinado; a API confere tamanho e primeiros
+> bytes antes de publicar). Sem ele, numa pasta local (`backend/fotos/`), só para desenvolvimento. Configuração do
+> bucket, CORS e permissões em [`docs/FOTOS.md`](../docs/FOTOS.md). As peças do catálogo ainda ficam no `db.json`,
+> apagado a cada deploy no Render: veja [`docs/PERSISTENCIA-CATALOGO.md`](../docs/PERSISTENCIA-CATALOGO.md).
 
 Os testes ficam em `catalogo/src/anuncios.test.ts` (backend), `core/src/pricing.test.ts` (cálculo) e
 `frontend/src/components/anuncios/FormularioAnuncio.test.tsx` (formulário e simulador).

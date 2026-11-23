@@ -273,11 +273,22 @@ components:
         atualizadoEm: { type: string, format: date-time }
     FotoPreparada:
       type: object
+      description: >-
+        Envio autorizado de uma foto, válido por 10 minutos. Com o Amazon S3 (produção), o navegador faz um
+        POST multipart/form-data em `urlUpload` com todos os `campos` e, por último, o arquivo no campo `file`;
+        a política assinada só aceita aquele caminho, aquele Content-Type e de 1 byte a 5 MB. No armazenamento
+        local (desenvolvimento), é um PUT com o arquivo no corpo em `/fotos/{chave}`.
+      required: [chave, urlUpload, metodo, campos, expiraEm, url]
       properties:
-        chave: { type: string, examples: ["1b0e…-…-….png"] }
-        urlUpload: { type: string, description: "URL pré-assinada (10 min) para o PUT da foto" }
+        chave: { type: string, examples: ["1b40590a-d80d-4b07-8d1a-25bbfa043023.png"] }
+        urlUpload: { type: string, description: "para onde enviar (S3: endpoint do bucket; local: /fotos/{chave}?…&sig=…)" }
+        metodo: { type: string, enum: [POST, PUT] }
+        campos:
+          type: object
+          additionalProperties: { type: string }
+          description: "campos assinados do POST (key, Content-Type, Policy, X-Amz-*); vazio no PUT"
         expiraEm: { type: string, format: date-time }
-        url: { type: string, description: endereço público da foto depois de enviada }
+        url: { type: string, description: "endereço público da foto depois de conferida e publicada no anúncio" }
     Erro:
       type: object
       required: [erro]
@@ -970,9 +981,13 @@ paths:
         "401": { $ref: "#/components/responses/SemLogin" }
         "403": { description: sem chave Pix cadastrada, content: { application/json: { schema: { $ref: "#/components/schemas/Erro" } } } }
   /fotos/{chave}:
+    description: >-
+      Só existe com o armazenamento local (desenvolvimento). Com o Amazon S3 (S3_BUCKET definido), o navegador
+      envia direto ao bucket e a foto é servida pelo bucket ou pela CDN; esta rota responde 404.
     put:
       tags: [anuncios]
-      summary: Envia o arquivo pela URL pré-assinada (a assinatura da URL autoriza; sem token)
+      summary: "Armazenamento local: envia o arquivo pela URL pré-assinada (a assinatura da URL autoriza; sem token)"
+      security: []
       description: O servidor confere a assinatura, o prazo, o Content-Type e os primeiros bytes do arquivo.
       parameters:
         - { name: chave, in: path, required: true, schema: { type: string } }
@@ -985,10 +1000,11 @@ paths:
         "403": { description: link inválido ou vencido, content: { application/json: { schema: { $ref: "#/components/schemas/Erro" } } } }
         "409": { description: a foto já foi enviada, content: { application/json: { schema: { $ref: "#/components/schemas/Erro" } } } }
         "413": { description: passou do tamanho máximo, content: { application/json: { schema: { $ref: "#/components/schemas/Erro" } } } }
-        "415": { description: o arquivo não é uma imagem JPG, PNG ou WebP, content: { application/json: { schema: { $ref: "#/components/schemas/Erro" } } } }
+        "415": { description: "o arquivo não é uma imagem JPG, PNG ou WebP", content: { application/json: { schema: { $ref: "#/components/schemas/Erro" } } } }
     get:
       tags: [anuncios]
       summary: A foto já enviada (pública)
+      security: []
       parameters: [{ name: chave, in: path, required: true, schema: { type: string } }]
       responses:
         "200": { description: imagem, content: { image/jpeg: {}, image/png: {}, image/webp: {} } }
@@ -1001,7 +1017,12 @@ paths:
       requestBody: { required: true, content: { application/json: { schema: { $ref: "#/components/schemas/NovoAnuncio" } } } }
       responses:
         "201": { description: anúncio publicado, content: { application/json: { schema: { $ref: "#/components/schemas/Anuncio" } } } }
-        "400": { $ref: "#/components/responses/Invalido" }
+        "400":
+          description: >-
+            dados inválidos, ou uma foto que não é desta vendedora, já está em outro anúncio, não chegou ao
+            armazenamento ou não confere (tamanho acima de 5 MB ou primeiros bytes que não são de JPG, PNG ou WebP).
+            A API confere a dona antes de consultar o armazenamento e só vincula a foto depois de conferida.
+          content: { application/json: { schema: { $ref: "#/components/schemas/Erro" } } }
         "401": { $ref: "#/components/responses/SemLogin" }
         "403": { description: sem chave Pix ou sem perfil de vendedora, content: { application/json: { schema: { $ref: "#/components/schemas/Erro" } } } }
         "503": { description: o serviço de contas não respondeu, content: { application/json: { schema: { $ref: "#/components/schemas/Erro" } } } }
@@ -1030,11 +1051,15 @@ paths:
       parameters: [{ $ref: "#/components/parameters/id" }]
       requestBody: { required: true, content: { application/json: { schema: { $ref: "#/components/schemas/NovoAnuncio" } } } }
       responses:
-        "200": { description: anúncio editado, content: { application/json: { schema: { $ref: "#/components/schemas/Anuncio" } } } }
-        "400": { $ref: "#/components/responses/Invalido" }
+        "200":
+          description: >-
+            anúncio editado. As fotos novas são conferidas antes; as que saíram do anúncio só são apagadas do
+            armazenamento depois que a alteração foi salva.
+          content: { application/json: { schema: { $ref: "#/components/schemas/Anuncio" } } }
+        "400": { description: dados inválidos ou foto que não confere (como no POST /anuncios), content: { application/json: { schema: { $ref: "#/components/schemas/Erro" } } } }
         "403": { description: o anúncio é de outra pessoa ou falta a chave Pix, content: { application/json: { schema: { $ref: "#/components/schemas/Erro" } } } }
         "404": { $ref: "#/components/responses/NaoEncontrado" }
-        "409": { description: peça reservada, vendida ou num pedido esperando o Pix, content: { application/json: { schema: { $ref: "#/components/schemas/Erro" } } } }
+        "409": { description: "peça reservada, vendida ou num pedido esperando o Pix", content: { application/json: { schema: { $ref: "#/components/schemas/Erro" } } } }
     delete:
       tags: [anuncios]
       summary: Exclui o anúncio e as fotos
@@ -1044,7 +1069,7 @@ paths:
         "204": { description: anúncio excluído }
         "403": { description: o anúncio é de outra pessoa, content: { application/json: { schema: { $ref: "#/components/schemas/Erro" } } } }
         "404": { $ref: "#/components/responses/NaoEncontrado" }
-        "409": { description: peça reservada, vendida ou num pedido esperando o Pix, content: { application/json: { schema: { $ref: "#/components/schemas/Erro" } } } }
+        "409": { description: "peça reservada, vendida ou num pedido esperando o Pix", content: { application/json: { schema: { $ref: "#/components/schemas/Erro" } } } }
   /anuncios/{id}/pausar:
     post:
       tags: [anuncios]
@@ -1054,7 +1079,7 @@ paths:
       responses:
         "200": { description: anúncio pausado, content: { application/json: { schema: { $ref: "#/components/schemas/Anuncio" } } } }
         "403": { description: o anúncio é de outra pessoa, content: { application/json: { schema: { $ref: "#/components/schemas/Erro" } } } }
-        "409": { description: já pausado, ou peça num pedido, content: { application/json: { schema: { $ref: "#/components/schemas/Erro" } } } }
+        "409": { description: "já pausado, ou peça num pedido", content: { application/json: { schema: { $ref: "#/components/schemas/Erro" } } } }
   /anuncios/{id}/reativar:
     post:
       tags: [anuncios]
@@ -1064,4 +1089,4 @@ paths:
       responses:
         "200": { description: anúncio na vitrine, content: { application/json: { schema: { $ref: "#/components/schemas/Anuncio" } } } }
         "403": { description: o anúncio é de outra pessoa, content: { application/json: { schema: { $ref: "#/components/schemas/Erro" } } } }
-        "409": { description: não está pausado, ou peça num pedido, content: { application/json: { schema: { $ref: "#/components/schemas/Erro" } } } }
+        "409": { description: "não está pausado, ou peça num pedido", content: { application/json: { schema: { $ref: "#/components/schemas/Erro" } } } }

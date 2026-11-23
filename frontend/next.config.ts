@@ -11,6 +11,29 @@ try {
 const producao = process.env.NODE_ENV === "production";
 
 /**
+ * Fotos dos anúncios no Amazon S3 (docs/FOTOS.md). Só entram na CSP e no next/image quando
+ * S3_BUCKET está definido:
+ * - envio: o navegador faz o POST pré-assinado direto em https://<bucket>.s3.<região>.amazonaws.com;
+ * - exibição: as fotos vêm de S3_URL_PUBLICA (CDN) ou, sem ela, do próprio bucket, só em /anuncios/.
+ * Os nomes são validados para não injetar nada na CSP.
+ */
+function enderecosDasFotos() {
+  const bucket = process.env.S3_BUCKET?.trim();
+  if (!bucket) return null;
+  const regiao = process.env.AWS_REGION?.trim() ?? "";
+  if (!/^[a-z0-9][a-z0-9-]{1,61}[a-z0-9]$/.test(bucket) || !/^[a-z]{2}(-[a-z]+)+-\d$/.test(regiao)) {
+    throw new Error("S3_BUCKET ou AWS_REGION inválido (veja docs/FOTOS.md).");
+  }
+  const envio = `https://${bucket}.s3.${regiao}.amazonaws.com`;
+  const publica = new URL(process.env.S3_URL_PUBLICA?.trim() || `${envio}/`);
+  if (publica.protocol !== "https:" || publica.username || publica.password || publica.search || publica.hash) {
+    throw new Error("S3_URL_PUBLICA precisa ser uma URL HTTPS simples (veja docs/FOTOS.md).");
+  }
+  return { envio, publica };
+}
+const fotos = enderecosDasFotos();
+
+/**
  * Content Security Policy: de onde a página pode carregar cada tipo de recurso.
  * - VLibras (tradutor de Libras do governo federal) carrega script, estilo, imagens e um
  *   módulo WebAssembly de vlibras.gov.br.
@@ -24,9 +47,9 @@ const csp = [
   "default-src 'self'",
   `script-src 'self' 'unsafe-inline' 'wasm-unsafe-eval' ${producao ? "" : "'unsafe-eval'"} ${VLIBRAS}`,
   `style-src 'self' 'unsafe-inline' ${VLIBRAS}`,
-  `img-src 'self' data: blob: https://images.unsplash.com ${VLIBRAS}`,
+  `img-src 'self' data: blob: https://images.unsplash.com ${fotos?.publica.origin ?? ""} ${VLIBRAS}`,
   `font-src 'self' data: ${VLIBRAS}`,
-  `connect-src 'self' https://viacep.com.br ${VLIBRAS} ${producao ? "" : "ws: wss:"}`,
+  `connect-src 'self' https://viacep.com.br ${fotos?.envio ?? ""} ${VLIBRAS} ${producao ? "" : "ws: wss:"}`,
   `media-src 'self' blob: ${VLIBRAS}`,
   "worker-src 'self' blob:",
   "object-src 'none'",
@@ -97,6 +120,10 @@ const nextConfig: NextConfig = {
     remotePatterns: [
       // fotos temporárias de demonstração (Unsplash); sai quando as fotos vierem do S3/CDN
       { protocol: "https", hostname: "images.unsplash.com" },
+      // fotos dos anúncios no S3 ou na CDN: só o host configurado e só a pasta publicada
+      ...(fotos
+        ? [{ protocol: "https" as const, hostname: fotos.publica.hostname, pathname: `${fotos.publica.pathname.replace(/\/$/, "")}/anuncios/**` }]
+        : []),
     ],
   },
 };

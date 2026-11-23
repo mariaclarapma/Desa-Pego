@@ -4,6 +4,7 @@ import { carregarEnv, lerLista, lerOrigens, lerTrustProxy } from "../../comum/se
 import { perfisPorHttp } from "./anuncios.js";
 import { criarAppCatalogo } from "./app.js";
 import { ArmazenamentoLocal } from "./fotos.js";
+import { armazenamentoS3DoAmbiente } from "./fotos-s3.js";
 import { gestaoPorHttp } from "./gestao.js";
 import { abrirLoja } from "./loja.js";
 
@@ -17,11 +18,12 @@ const apiKeys = lerLista(process.env.API_KEYS);
 // o checkout fala com o serviço de pedidos (Módulo 05) pelas rotas internas, com a mesma API key
 const gestao = apiKeys[0] ? gestaoPorHttp({ baseUrl: process.env.PEDIDOS_API_URL ?? "http://localhost:3003", apiKey: apiKeys[0] }) : null;
 const jwtSegredo = lerSegredoJwt(process.env);
-// Fotos dos anúncios: por enquanto numa pasta local (fora do Git). O grupo ainda decide entre
-// Amazon S3 e Supabase Storage; no Render grátis esta pasta é apagada a cada deploy.
+// Fotos dos anúncios: Amazon S3 quando S3_BUCKET estiver definido (produção); senão, uma pasta
+// local fora do Git, só para desenvolvimento (no Render grátis ela é apagada a cada deploy).
+const fotosS3 = armazenamentoS3DoAmbiente(process.env);
 const anuncios = {
   // `||`: o .env gerado pelo gerar-env traz PASTA_FOTOS vazio, e vazio também cai no padrão
-  armazenamento: new ArmazenamentoLocal(process.env.PASTA_FOTOS || caminho("../../fotos"), "/api/fotos", jwtSegredo),
+  armazenamento: fotosS3 ?? new ArmazenamentoLocal(process.env.PASTA_FOTOS || caminho("../../fotos"), "/api/fotos", jwtSegredo),
   perfis: perfisPorHttp({ baseUrl: process.env.CONTAS_API_URL ?? "http://localhost:3002" }),
   fotoMaxBytes: 5 * 1024 * 1024,
 };
@@ -39,6 +41,7 @@ const app = criarAppCatalogo(loja, {
 app.listen(porta, "127.0.0.1", () => {
   console.log(`[catalogo] API do catálogo em http://localhost:${porta}`);
   if (!gestao) console.warn("[catalogo] API_KEYS não definido: rotas /integracao e checkout desligados (503).");
+  console.log(`[catalogo] fotos dos anúncios: ${fotosS3 ? `Amazon S3 (${process.env.S3_BUCKET})` : "pasta local (só desenvolvimento)"}`);
 });
 
 // a cada minuto, cancela os pedidos com o Pix vencido (aqui e no Módulo 05) e devolve as peças
