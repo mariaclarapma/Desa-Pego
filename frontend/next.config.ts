@@ -55,6 +55,8 @@ const cobertura = process.env.COBERTURA === "1";
 const nextConfig: NextConfig = {
   // não anuncia "x-powered-by: Next.js"
   poweredByHeader: false,
+  // app/core (cálculo do simulador e da carteira), em TypeScript, compartilhado com o backend
+  transpilePackages: ["@desapego/core"],
   ...(cobertura && {
     distDir: ".next-cobertura",
     productionBrowserSourceMaps: true,

@@ -4,6 +4,7 @@ import { z } from "zod";
 import { exigirAdminMaster, exigirLogin, type Autenticada } from "../../comum/autenticacao.js";
 import { categoriaPermitida, CONDICOES } from "../../comum/categorias.js";
 import { cors, exigirApiKey, limiteRequisicoes } from "../../comum/seguranca.js";
+import { rotasAnuncios, rotasFotos, type ConfigAnuncios } from "./anuncios.js";
 import { CompraFacade } from "./compra-facade.js";
 import type { GestaoPedidos } from "./gestao.js";
 import type { Loja, Peca } from "./loja.js";
@@ -21,6 +22,8 @@ export interface ConfigCatalogo {
   jwtSegredo: Uint8Array;
   /** Rotas internas do Módulo 05 (sem elas, o checkout responde 503). */
   gestao?: GestaoPedidos | null;
+  /** Anúncios e fotos (Módulo 02). Sem isto, /anuncios e /fotos não existem. */
+  anuncios?: ConfigAnuncios | null;
 }
 
 const id = z.string().trim().min(1).max(80).regex(/^[\w-]+$/, "id inválido.");
@@ -104,12 +107,12 @@ export function criarAppCatalogo(loja: Loja, config: ConfigCatalogo, agora: () =
 
   const achar = (pecaId: string) => {
     const peca = loja.peca(pecaId);
-    // anúncio ocultado pela administração conta como inexistente para o público
-    if (!peca || peca.oculta) throw new Recusa(404, "essa peça não existe mais.");
+    // anúncio ocultado pela administração ou pausado pela vendedora conta como inexistente para o público
+    if (!peca || peca.oculta || peca.pausada) throw new Recusa(404, "essa peça não existe mais.");
     return peca;
   };
   // quem reservou nunca aparece para o público
-  const pecaPublica = ({ oculta: _oculta, motivoOculta: _motivo, reservadaPor: _por, ...p }: Peca) => ({ ...p, status: statusAtual(p, agora()) });
+  const pecaPublica = ({ oculta: _oculta, motivoOculta: _motivo, reservadaPor: _por, pausada: _pausada, ...p }: Peca) => ({ ...p, status: statusAtual(p, agora()) });
   /** Frete fixo: o que a administração definiu no painel ou, se nada, o padrão do servidor. */
   const freteAtual = () => loja.configuracao().freteCentavos ?? config.freteCentavos;
   const compras = new CompraFacade(loja, config.gestao ?? null, { frete: freteAtual, agora });
@@ -137,6 +140,7 @@ export function criarAppCatalogo(loja: Loja, config: ConfigCatalogo, agora: () =
       .filter(
         (p) =>
           !p.oculta &&
+          !p.pausada &&
           statusAtual(p, agora()) !== "vendida" &&
           (!termo || normalizar(`${p.titulo} ${p.marca ?? ""} ${p.descricao ?? ""}`).includes(termo)) &&
           (!f.categoria || p.categoria === f.categoria) &&
@@ -234,6 +238,19 @@ export function criarAppCatalogo(loja: Loja, config: ConfigCatalogo, agora: () =
   });
 
   app.use("/integracao", integracao);
+
+  // ---- anúncios da vendedora (Módulo 02, Issue #004) e fotos por URL pré-assinada ----
+  if (config.anuncios) {
+    app.use(
+      "/anuncios",
+      rotasAnuncios(loja, { ...config.anuncios, jwtSegredo: config.jwtSegredo }, {
+        agora,
+        emPedidoAberto: (pecaId) => compras.pecaEmPedidoAberto(pecaId),
+        escrita,
+      }),
+    );
+    app.use("/fotos", rotasFotos(loja, config.anuncios, agora));
+  }
 
   // ---- painel do admin (Módulo 05): anúncios. Só a administradora master. ----
   const admin = express.Router();

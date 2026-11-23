@@ -21,6 +21,9 @@ next-env.d.ts
 # banco da API simulada (gerado a partir de backend/db.seed.json)
 backend/db.json
 
+# fotos dos anúncios gravadas localmente (Módulo 02); em produção vão para S3 ou Supabase Storage
+backend/fotos/
+
 # banco do serviço de contas: tem hashes de senha e sessões, nunca vai para o Git
 backend/contas/dados/
 *.sqlite

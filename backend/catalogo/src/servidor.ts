@@ -1,7 +1,9 @@
 import { fileURLToPath } from "node:url";
 import { lerSegredoJwt } from "../../comum/autenticacao.js";
 import { carregarEnv, lerLista, lerOrigens, lerTrustProxy } from "../../comum/seguranca.js";
+import { perfisPorHttp } from "./anuncios.js";
 import { criarAppCatalogo } from "./app.js";
+import { ArmazenamentoLocal } from "./fotos.js";
 import { gestaoPorHttp } from "./gestao.js";
 import { abrirLoja } from "./loja.js";
 
@@ -14,6 +16,15 @@ const loja = abrirLoja(caminho("../../db.json"), caminho("../../db.seed.json"));
 const apiKeys = lerLista(process.env.API_KEYS);
 // o checkout fala com o serviço de pedidos (Módulo 05) pelas rotas internas, com a mesma API key
 const gestao = apiKeys[0] ? gestaoPorHttp({ baseUrl: process.env.PEDIDOS_API_URL ?? "http://localhost:3003", apiKey: apiKeys[0] }) : null;
+const jwtSegredo = lerSegredoJwt(process.env);
+// Fotos dos anúncios: por enquanto numa pasta local (fora do Git). O grupo ainda decide entre
+// Amazon S3 e Supabase Storage; no Render grátis esta pasta é apagada a cada deploy.
+const anuncios = {
+  // `||`: o .env gerado pelo gerar-env traz PASTA_FOTOS vazio, e vazio também cai no padrão
+  armazenamento: new ArmazenamentoLocal(process.env.PASTA_FOTOS || caminho("../../fotos"), "/api/fotos", jwtSegredo),
+  perfis: perfisPorHttp({ baseUrl: process.env.CONTAS_API_URL ?? "http://localhost:3002" }),
+  fotoMaxBytes: 5 * 1024 * 1024,
+};
 const app = criarAppCatalogo(loja, {
   origens: lerOrigens(process.env),
   apiKeys,
@@ -21,7 +32,8 @@ const app = criarAppCatalogo(loja, {
   trustProxy: lerTrustProxy(process.env.TRUST_PROXY),
   reservaMinutos: 15,
   freteCentavos: 1990,
-  jwtSegredo: lerSegredoJwt(process.env),
+  jwtSegredo,
+  anuncios,
 });
 
 app.listen(porta, "127.0.0.1", () => {

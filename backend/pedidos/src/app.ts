@@ -4,7 +4,8 @@ import helmet from "helmet";
 import { z } from "zod";
 import { exigirAdminMaster, exigirLogin, type Autenticada } from "../../comum/autenticacao.js";
 import { CATEGORIAS, CONDICOES, type CategoriaSlug } from "../../comum/categorias.js";
-import { dividirValor, PONTOS_BASE_100 } from "../../comum/dinheiro.js";
+import { calcularRepasse } from "@desapego/core/pricing";
+import { PONTOS_BASE_100 } from "../../comum/dinheiro.js";
 import { cors, exigirApiKey, limiteRequisicoes } from "../../comum/seguranca.js";
 import type { BancoPedidos, Pedido } from "./banco.js";
 import { montarDashboard, PERIODOS } from "./dashboard.js";
@@ -153,9 +154,8 @@ export function criarAppPedidos(banco: BancoPedidos, config: ConfigPedidos, agor
     // a comissão e a taxa vigentes ficam congeladas no pedido (Req. 011 e 014)
     const comissao = await banco.comissaoAtual();
     const taxaPix = await banco.taxaPixAtual();
-    const divisao = dividirValor(subtotal, comissao);
-    // o Pix cobra sobre o valor inteiro que a compradora paga (peças + frete)
-    const taxaPixCentavos = dividirValor(total, taxaPix).comissaoCentavos;
+    // mesma função do simulador de ganho (Req. 005): o Pix cobra sobre peças + frete
+    const repasse = calcularRepasse(subtotal, dados.freteCentavos, { comissaoPontosBase: comissao, taxaPixPontosBase: taxaPix });
     const pedido = await banco.inserirPedido({
       id: randomUUID(),
       compradoraId: dados.compradoraId,
@@ -166,11 +166,11 @@ export function criarAppPedidos(banco: BancoPedidos, config: ConfigPedidos, agor
       freteCentavos: dados.freteCentavos,
       totalCentavos: total,
       comissaoPontosBase: comissao,
-      comissaoCentavos: divisao.comissaoCentavos,
+      comissaoCentavos: repasse.comissaoCentavos,
       taxaPixPontosBase: taxaPix,
-      taxaPixCentavos,
+      taxaPixCentavos: repasse.taxaPixCentavos,
       // nunca negativo: comissão ≤ 50% das peças e taxa ≤ 10% do total
-      vendedoraCentavos: divisao.vendedoraCentavos + dados.freteCentavos - taxaPixCentavos,
+      vendedoraCentavos: repasse.vendedoraCentavos,
       status: "AGUARDANDO_PAGAMENTO",
     });
     res.status(201).json(pedido);
