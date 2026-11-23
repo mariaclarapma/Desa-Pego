@@ -46,7 +46,7 @@ describe("CRUD da conta", () => {
       cy.location("pathname").should("eq", "/entrar");
       cy.findCampo("e-mail").type(email);
       cy.findCampo("senha").type("brecho2026");
-      cy.contains("button[type=submit]", /^entrar$/).click();
+      cy.contains("button[type=submit]", /^entrar na minha conta$/).click();
       cy.location("pathname").should("eq", "/conta");
     });
   });
@@ -70,7 +70,7 @@ describe("CRUD da conta", () => {
       cy.visit("/entrar");
       cy.findCampo("e-mail").type(email);
       cy.findCampo("senha").type("garimpo123");
-      cy.contains("button[type=submit]", /^entrar$/).click();
+      cy.contains("button[type=submit]", /^entrar na minha conta$/).click();
       cy.get("[role=alert]").should("contain.text", "e-mail ou senha incorretos");
     });
   });

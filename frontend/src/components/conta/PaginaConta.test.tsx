@@ -23,7 +23,7 @@ describe("PaginaConta", () => {
     expect(screen.queryByLabelText("nome completo")).not.toBeInTheDocument();
     await user.type(screen.getByLabelText("e-mail"), "ana@exemplo.com");
 
-    await user.click(screen.getByRole("tab", { name: "criar conta", selected: false }));
+    await user.click(screen.getByRole("tab", { name: "criar minha conta", selected: false }));
     expect(screen.getByRole("heading", { level: 1, name: "criar conta" })).toBeInTheDocument();
     expect(screen.getByLabelText("nome completo")).toBeInTheDocument();
     expect(screen.getByLabelText("confirmar senha")).toBeInTheDocument();
@@ -34,13 +34,13 @@ describe("PaginaConta", () => {
   it("abas respondem às setas do teclado", async () => {
     const user = userEvent.setup();
     render(<PaginaConta modoInicial="entrar" />);
-    screen.getByRole("tab", { name: "entrar" }).focus();
+    screen.getByRole("tab", { name: "já tenho conta" }).focus();
 
     await user.keyboard("{ArrowRight}");
-    const criar = screen.getByRole("tab", { name: "criar conta" });
+    const criar = screen.getByRole("tab", { name: "criar minha conta" });
     expect(criar).toHaveAttribute("aria-selected", "true");
     expect(criar).toHaveFocus();
-    expect(screen.getByRole("tabpanel", { name: "criar conta" })).toBeInTheDocument();
+    expect(screen.getByRole("tabpanel", { name: "criar minha conta" })).toBeInTheDocument();
   });
 
   it("mostra os erros ligados aos campos e foca o primeiro inválido", async () => {
@@ -76,7 +76,7 @@ describe("PaginaConta", () => {
 
     await user.type(screen.getByLabelText("e-mail"), "ana@exemplo.com");
     await user.type(screen.getByLabelText("senha"), "garimpo123");
-    await user.click(screen.getByRole("button", { name: "entrar" }));
+    await user.click(screen.getByRole("button", { name: "entrar na minha conta" }));
 
     await vi.waitFor(() => expect(push).toHaveBeenCalledWith("/conta"));
     expect(fetchFalso).toHaveBeenCalledWith("/api/auth/login", expect.objectContaining({ method: "POST", credentials: "same-origin" }));
@@ -90,7 +90,7 @@ describe("PaginaConta", () => {
 
     await user.type(screen.getByLabelText("e-mail"), "ana@exemplo.com");
     await user.type(screen.getByLabelText("senha"), "garimpo123");
-    await user.click(screen.getByRole("button", { name: "entrar" }));
+    await user.click(screen.getByRole("button", { name: "entrar na minha conta" }));
 
     expect(await screen.findByRole("alert")).toHaveTextContent(/serviço de contas não respondeu/);
     expect(push).not.toHaveBeenCalled();
@@ -119,7 +119,7 @@ describe("PaginaConta", () => {
 
     await user.type(screen.getByLabelText("e-mail"), "ana@exemplo.com");
     await user.type(screen.getByLabelText("senha"), "errada123");
-    await user.click(screen.getByRole("button", { name: "entrar" }));
+    await user.click(screen.getByRole("button", { name: "entrar na minha conta" }));
 
     expect(await screen.findByRole("alert")).toHaveTextContent("e-mail ou senha incorretos.");
   });
@@ -141,7 +141,7 @@ describe("PaginaConta", () => {
       await user.type(cpf, "529982247a25");
       expect(cpf).toHaveValue("529.982.247-25");
 
-      await user.click(screen.getByRole("tab", { name: "entrar" }));
+      await user.click(screen.getByRole("tab", { name: "já tenho conta" }));
       expect(screen.queryByLabelText("CPF")).not.toBeInTheDocument();
     });
 
