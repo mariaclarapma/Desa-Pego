@@ -37,6 +37,8 @@ tags:
     description: perfil de vendedora e chave Pix (Req. 002)
   - name: vitrine
     description: catálogo público, sem login (Req. 007)
+  - name: anuncios
+    description: anúncios da vendedora e envio de fotos (Req. 004). Publicar e enviar fotos exigem chave Pix (Req. 002).
 
 components:
   securitySchemes:
@@ -230,6 +232,52 @@ components:
         total: { type: integer, description: "total de peças que atendem aos filtros, somando todas as páginas" }
         pagina: { type: integer, minimum: 1 }
         porPagina: { type: integer, minimum: 1, maximum: 48 }
+    NovoAnuncio:
+      type: object
+      description: o mesmo corpo serve para publicar (POST) e editar (PUT)
+      required: [titulo, descricao, categoria, tamanho, condicao, precoCentavos, fotos]
+      properties:
+        titulo: { type: string, maxLength: 100 }
+        descricao: { type: string, maxLength: 2000 }
+        categoria: { type: string, enum: [feminino, masculino, calcados, bolsas, acessorios] }
+        tamanho: { type: string, maxLength: 20 }
+        marca: { type: [string, "null"], maxLength: 60 }
+        condicao: { type: string, enum: [nova_com_etiqueta, otimo_estado, bom_estado, com_marcas_de_uso] }
+        precoCentavos: { type: integer, minimum: 1, description: centavos inteiros, maior que zero }
+        fotos:
+          type: array
+          minItems: 1
+          maxItems: 5
+          uniqueItems: true
+          description: chaves das fotos já enviadas por esta conta (POST /anuncios/fotos), na ordem; a primeira é a capa
+          items: { type: string }
+    Anuncio:
+      type: object
+      description: o anúncio como a própria vendedora vê
+      properties:
+        id: { type: string }
+        titulo: { type: string }
+        descricao: { type: string }
+        categoria: { type: string }
+        tamanho: { type: string }
+        marca: { type: [string, "null"] }
+        condicao: { type: string }
+        precoCentavos: { type: integer }
+        fotos: { type: array, items: { type: object, properties: { chave: { type: string }, url: { type: string } } } }
+        status: { type: string, enum: [disponivel, reservada, vendida] }
+        pausada: { type: boolean, description: pausada pela vendedora (some da vitrine) }
+        oculta: { type: boolean, description: ocultada pela administração }
+        motivoOculta: { type: [string, "null"] }
+        emPedido: { type: boolean, description: num pedido esperando o Pix (não pode ser alterada) }
+        criadoEm: { type: string, format: date-time }
+        atualizadoEm: { type: string, format: date-time }
+    FotoPreparada:
+      type: object
+      properties:
+        chave: { type: string, examples: ["1b0e…-…-….png"] }
+        urlUpload: { type: string, description: "URL pré-assinada (10 min) para o PUT da foto" }
+        expiraEm: { type: string, format: date-time }
+        url: { type: string, description: endereço público da foto depois de enviada }
     Erro:
       type: object
       required: [erro]
@@ -893,3 +941,127 @@ paths:
         "200": { description: anúncio visível, content: { application/json: { schema: { $ref: "#/components/schemas/AnuncioAdmin" } } } }
         "403": { $ref: "#/components/responses/Proibido" }
         "422": { description: categoria não permitida, content: { application/json: { schema: { $ref: "#/components/schemas/Erro" } } } }
+  /anuncios/fotos:
+    post:
+      tags: [anuncios]
+      summary: Pede URLs pré-assinadas para enviar de 1 a 5 fotos (JPG, PNG ou WebP, até 5 MB cada)
+      security: [{ token: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [arquivos]
+              properties:
+                arquivos:
+                  type: array
+                  minItems: 1
+                  maxItems: 5
+                  items:
+                    type: object
+                    required: [tipo, tamanhoBytes]
+                    properties:
+                      tipo: { type: string, enum: [image/jpeg, image/png, image/webp] }
+                      tamanhoBytes: { type: integer, minimum: 1 }
+      responses:
+        "201": { description: URLs de envio, content: { application/json: { schema: { type: object, properties: { fotos: { type: array, items: { $ref: "#/components/schemas/FotoPreparada" } } } } } } }
+        "400": { $ref: "#/components/responses/Invalido" }
+        "401": { $ref: "#/components/responses/SemLogin" }
+        "403": { description: sem chave Pix cadastrada, content: { application/json: { schema: { $ref: "#/components/schemas/Erro" } } } }
+  /fotos/{chave}:
+    put:
+      tags: [anuncios]
+      summary: Envia o arquivo pela URL pré-assinada (a assinatura da URL autoriza; sem token)
+      description: O servidor confere a assinatura, o prazo, o Content-Type e os primeiros bytes do arquivo.
+      parameters:
+        - { name: chave, in: path, required: true, schema: { type: string } }
+        - { name: sig, in: query, required: true, schema: { type: string } }
+      requestBody:
+        required: true
+        content: { image/jpeg: {}, image/png: {}, image/webp: {} }
+      responses:
+        "204": { description: foto gravada }
+        "403": { description: link inválido ou vencido, content: { application/json: { schema: { $ref: "#/components/schemas/Erro" } } } }
+        "409": { description: a foto já foi enviada, content: { application/json: { schema: { $ref: "#/components/schemas/Erro" } } } }
+        "413": { description: passou do tamanho máximo, content: { application/json: { schema: { $ref: "#/components/schemas/Erro" } } } }
+        "415": { description: o arquivo não é uma imagem JPG, PNG ou WebP, content: { application/json: { schema: { $ref: "#/components/schemas/Erro" } } } }
+    get:
+      tags: [anuncios]
+      summary: A foto já enviada (pública)
+      parameters: [{ name: chave, in: path, required: true, schema: { type: string } }]
+      responses:
+        "200": { description: imagem, content: { image/jpeg: {}, image/png: {}, image/webp: {} } }
+        "404": { $ref: "#/components/responses/NaoEncontrado" }
+  /anuncios:
+    post:
+      tags: [anuncios]
+      summary: Publica o anúncio; vira uma peça do catálogo da vendedora, visível na vitrine
+      security: [{ token: [] }]
+      requestBody: { required: true, content: { application/json: { schema: { $ref: "#/components/schemas/NovoAnuncio" } } } }
+      responses:
+        "201": { description: anúncio publicado, content: { application/json: { schema: { $ref: "#/components/schemas/Anuncio" } } } }
+        "400": { $ref: "#/components/responses/Invalido" }
+        "401": { $ref: "#/components/responses/SemLogin" }
+        "403": { description: sem chave Pix ou sem perfil de vendedora, content: { application/json: { schema: { $ref: "#/components/schemas/Erro" } } } }
+        "503": { description: o serviço de contas não respondeu, content: { application/json: { schema: { $ref: "#/components/schemas/Erro" } } } }
+  /anuncios/meus:
+    get:
+      tags: [anuncios]
+      summary: Os anúncios da vendedora logada, do mais novo ao mais antigo
+      security: [{ token: [] }]
+      responses:
+        "200": { description: lista, content: { application/json: { schema: { type: object, properties: { anuncios: { type: array, items: { $ref: "#/components/schemas/Anuncio" } } } } } } }
+        "401": { $ref: "#/components/responses/SemLogin" }
+  /anuncios/{id}:
+    get:
+      tags: [anuncios]
+      summary: Um anúncio da vendedora logada
+      security: [{ token: [] }]
+      parameters: [{ $ref: "#/components/parameters/id" }]
+      responses:
+        "200": { description: anúncio, content: { application/json: { schema: { $ref: "#/components/schemas/Anuncio" } } } }
+        "403": { description: o anúncio é de outra pessoa, content: { application/json: { schema: { $ref: "#/components/schemas/Erro" } } } }
+        "404": { $ref: "#/components/responses/NaoEncontrado" }
+    put:
+      tags: [anuncios]
+      summary: Edita o anúncio (fotos que saírem são apagadas)
+      security: [{ token: [] }]
+      parameters: [{ $ref: "#/components/parameters/id" }]
+      requestBody: { required: true, content: { application/json: { schema: { $ref: "#/components/schemas/NovoAnuncio" } } } }
+      responses:
+        "200": { description: anúncio editado, content: { application/json: { schema: { $ref: "#/components/schemas/Anuncio" } } } }
+        "400": { $ref: "#/components/responses/Invalido" }
+        "403": { description: o anúncio é de outra pessoa ou falta a chave Pix, content: { application/json: { schema: { $ref: "#/components/schemas/Erro" } } } }
+        "404": { $ref: "#/components/responses/NaoEncontrado" }
+        "409": { description: peça reservada, vendida ou num pedido esperando o Pix, content: { application/json: { schema: { $ref: "#/components/schemas/Erro" } } } }
+    delete:
+      tags: [anuncios]
+      summary: Exclui o anúncio e as fotos
+      security: [{ token: [] }]
+      parameters: [{ $ref: "#/components/parameters/id" }]
+      responses:
+        "204": { description: anúncio excluído }
+        "403": { description: o anúncio é de outra pessoa, content: { application/json: { schema: { $ref: "#/components/schemas/Erro" } } } }
+        "404": { $ref: "#/components/responses/NaoEncontrado" }
+        "409": { description: peça reservada, vendida ou num pedido esperando o Pix, content: { application/json: { schema: { $ref: "#/components/schemas/Erro" } } } }
+  /anuncios/{id}/pausar:
+    post:
+      tags: [anuncios]
+      summary: Pausa o anúncio (some da vitrine e da página pública)
+      security: [{ token: [] }]
+      parameters: [{ $ref: "#/components/parameters/id" }]
+      responses:
+        "200": { description: anúncio pausado, content: { application/json: { schema: { $ref: "#/components/schemas/Anuncio" } } } }
+        "403": { description: o anúncio é de outra pessoa, content: { application/json: { schema: { $ref: "#/components/schemas/Erro" } } } }
+        "409": { description: já pausado, ou peça num pedido, content: { application/json: { schema: { $ref: "#/components/schemas/Erro" } } } }
+  /anuncios/{id}/reativar:
+    post:
+      tags: [anuncios]
+      summary: Volta a mostrar o anúncio pausado
+      security: [{ token: [] }]
+      parameters: [{ $ref: "#/components/parameters/id" }]
+      responses:
+        "200": { description: anúncio na vitrine, content: { application/json: { schema: { $ref: "#/components/schemas/Anuncio" } } } }
+        "403": { description: o anúncio é de outra pessoa, content: { application/json: { schema: { $ref: "#/components/schemas/Erro" } } } }
+        "409": { description: não está pausado, ou peça num pedido, content: { application/json: { schema: { $ref: "#/components/schemas/Erro" } } } }

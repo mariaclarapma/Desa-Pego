@@ -1,0 +1,14 @@
+{
+  "name": "@desapego/core",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Regras compartilhadas entre frontend e backend (o app/core do documento de arquitetura).",
+  "type": "module",
+  "exports": {
+    "./pricing": "./src/pricing.ts"
+  },
+  "scripts": {
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit"
+  }
+}

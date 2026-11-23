@@ -28,6 +28,7 @@
     "vitest": "^3.2.7"
   },
   "dependencies": {
+    "@desapego/core": "*",
     "@node-rs/argon2": "^2.2.2",
     "cookie-parser": "^1.4.7",
     "express": "^5.3.0",

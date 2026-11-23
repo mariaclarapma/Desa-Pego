@@ -4,6 +4,7 @@
   "private": true,
   "description": "desaPego: brechó online (Desenvolvimento Web, CEUB 2026)",
   "workspaces": [
+    "core",
     "frontend",
     "backend"
   ],

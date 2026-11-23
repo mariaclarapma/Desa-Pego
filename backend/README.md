@@ -126,6 +126,34 @@ chave de `API_KEYS`, em `PEDIDOS_API_URL`, padrão `http://localhost:3003`) e o 
 
 O teste de ponta a ponta, com os dois serviços conversando por HTTP, fica em `catalogo/src/integracao-modulo05.test.ts`.
 
+### Anúncios (Módulo 02, Issues #004 a #006)
+
+O anúncio publicado é uma **peça do catálogo** com `vendedoraId`: aparece na vitrine e segue o caminho normal da
+sacola, do checkout e da carteira. As rotas ficam em `catalogo/src/anuncios.ts` e usam `exigirLogin`,
+`exigirChavePix` e `categoriaPermitida` de `comum/`. Nome público e cidade vêm do perfil da vendedora no serviço de
+contas (`GET /auth/vendedoras/:id`, em `CONTAS_API_URL`).
+
+| Método e rota | Uso |
+| --- | --- |
+| `POST /anuncios/fotos` | **login + chave Pix** · URLs pré-assinadas para 1 a 5 fotos (JPG, PNG ou WebP, até 5 MB) · 201, 400, 401, 403 |
+| `PUT /fotos/:chave` | envio pela URL assinada (sem token) · confere assinatura, prazo, tipo e os primeiros bytes · 204, 403, 409, 413, 415 |
+| `GET /fotos/:chave` | foto já enviada (pública) |
+| `POST /anuncios` | **login + chave Pix** · publica · 201, 400, 401, 403 (sem chave Pix ou sem perfil de vendedora), 503 |
+| `GET /anuncios/meus`, `GET /anuncios/:id` | **login** · os anúncios da própria conta (de outra conta: 403) |
+| `PUT /anuncios/:id` | **login + chave Pix** · edita · 403 (de outra conta), 409 (reservada, vendida ou num pedido) |
+| `POST /anuncios/:id/pausar`, `/reativar` | **login** · pausada some da vitrine e da página pública · 403, 409 |
+| `DELETE /anuncios/:id` | **login** · exclui e apaga as fotos · 204, 403, 409 |
+
+O **simulador de ganho** do formulário usa `calcularRepasse`, de `core/src/pricing.ts` (o `app/core` da
+arquitetura), a mesma função que o serviço de pedidos usa para gravar o pedido e a carteira. Comissão e taxa do Pix
+vêm de `GET /gestao/config`, e o frete de `GET /config`.
+
+> **Fotos:** por enquanto ficam numa pasta local (`backend/fotos/`), que no Render é apagada a cada deploy. Antes de
+> produção, o grupo precisa escolher entre Supabase Storage e Amazon S3. Veja [`docs/FOTOS.md`](../docs/FOTOS.md).
+
+Os testes ficam em `catalogo/src/anuncios.test.ts` (backend), `core/src/pricing.test.ts` (cálculo) e
+`frontend/src/components/anuncios/FormularioAnuncio.test.tsx` (formulário e simulador).
+
 ## Segurança comum (`comum/`)
 
 `seguranca.ts`: CORS por lista de origens (nunca `*`; origem de fora recebe 403), limite de requisições por IP e

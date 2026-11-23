@@ -25,7 +25,22 @@ export interface Peca {
   /** Ocultada pela administração (anúncio irregular): some da vitrine, da página e da reserva. */
   oculta?: boolean;
   motivoOculta?: string | null;
+  /** Pausada pela própria vendedora (Req. 004): também some da vitrine até ela reativar. */
+  pausada?: boolean;
+  /** Fotos do anúncio, na ordem (a primeira é a capa, repetida em `fotoUrl`). */
+  fotos?: { chave: string; url: string }[];
   [campo: string]: unknown;
+}
+
+/** Foto enviada por URL pré-assinada (Req. 004). Fica solta até entrar num anúncio. */
+export interface FotoEnviada {
+  chave: string;
+  /** Conta que pediu o envio: só ela pode usar a foto num anúncio. */
+  usuariaId: string;
+  tipo: string;
+  criadaEm: string;
+  enviadaEm: string | null;
+  pecaId: string | null;
 }
 
 export interface Pedido {
@@ -60,6 +75,7 @@ interface Dados {
   pecas: Peca[];
   pedidos: Pedido[];
   configuracao?: ConfiguracaoLoja;
+  fotos?: FotoEnviada[];
 }
 
 export type Loja = ReturnType<typeof abrirLoja>;
@@ -93,6 +109,7 @@ export function abrirLoja(arquivo: string | null, semente: string) {
     pedido: (id: string) => dados.pedidos.find((p) => p.id === id),
     listarPedidos: () => dados.pedidos,
     configuracao: (): ConfiguracaoLoja => dados.configuracao ?? {},
+    foto: (chave: string) => dados.fotos?.find((f) => f.chave === chave),
     alterarEmFila,
     novoId: () => randomBytes(6).toString("hex"),
     /** Só para os testes: volta ao conteúdo da semente. */

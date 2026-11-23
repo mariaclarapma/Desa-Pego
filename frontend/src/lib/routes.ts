@@ -49,6 +49,11 @@ export function pedidoUrl(id: string): string {
   return `/pedido/${encodeURIComponent(id)}`;
 }
 
+/** Edição de um anúncio da vendedora (Req. 004). */
+export function editarAnuncioUrl(id: string): string {
+  return `${ROUTES.meusAnuncios}/${encodeURIComponent(id)}`;
+}
+
 /** Página de detalhes da peça (Req. 008). */
 export function pecaUrl(id: string): string {
   return `/peca/${encodeURIComponent(id)}`;
