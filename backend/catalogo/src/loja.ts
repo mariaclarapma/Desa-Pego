@@ -9,11 +9,30 @@ import { copyFileSync, existsSync, readFileSync, writeFileSync } from "node:fs";
 export type StatusPeca = "disponivel" | "reservada" | "vendida";
 export type StatusPedido = "aguardando_pagamento" | "pago" | "cancelado";
 
+/**
+ * Uma foto da peça. O anúncio (Req. 004) grava `chave` e `url`; o seed pode trazer `alt`.
+ * `alt` descreve a foto para quem usa leitor de tela: sem ele, a galeria (Req. 008) gera um.
+ */
+export interface Foto {
+  url: string;
+  alt?: string;
+  /** Chave no armazenamento de fotos. Só existe em fotos enviadas pelo anúncio; nunca sai na vitrine. */
+  chave?: string;
+}
+
 export interface Peca {
   id: string;
   titulo: string;
   precoCentavos: number;
   status: StatusPeca;
+  /** Foto principal: a da vitrine, da sacola e a primeira da galeria. */
+  fotoUrl?: string;
+  fotoAlt?: string;
+  /**
+   * Fotos na ordem (a primeira é a capa, repetida em `fotoUrl`). Viram a galeria da página da
+   * peça (Req. 008). Peças antigas não têm: a API usa a foto principal no lugar.
+   */
+  fotos?: Foto[];
   reservadaAte?: string | null;
   /** Conta que reservou (id do token): só ela libera a reserva e fecha o pedido. Nunca sai na vitrine. */
   reservadaPor?: string | null;
@@ -27,8 +46,6 @@ export interface Peca {
   motivoOculta?: string | null;
   /** Pausada pela própria vendedora (Req. 004): também some da vitrine até ela reativar. */
   pausada?: boolean;
-  /** Fotos do anúncio, na ordem (a primeira é a capa, repetida em `fotoUrl`). */
-  fotos?: { chave: string; url: string }[];
   [campo: string]: unknown;
 }
 

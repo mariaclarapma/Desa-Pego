@@ -10,6 +10,20 @@
       "precoCentavos": 18990,
       "fotoUrl": "https://images.unsplash.com/photo-1551028719-00167b16eac5?auto=format&fit=crop&w=800&q=80",
       "fotoAlt": "Jaqueta de couro preta com zíperes num cabide sobre lençol branco",
+      "fotos": [
+        {
+          "url": "https://images.unsplash.com/photo-1551028719-00167b16eac5?auto=format&fit=crop&w=800&q=80",
+          "alt": "Jaqueta de couro preta com zíperes num cabide sobre lençol branco"
+        },
+        {
+          "url": "https://images.unsplash.com/photo-1551028719-00167b16eac5?auto=format&fit=crop&w=800&h=1000&q=80&crop=focalpoint&fp-x=0.3&fp-y=0.78&fp-z=2.5",
+          "alt": "Detalhe dos zíperes prateados dos bolsos da jaqueta de couro preta"
+        },
+        {
+          "url": "https://images.unsplash.com/photo-1551028719-00167b16eac5?auto=format&fit=crop&w=800&h=1000&q=80&crop=focalpoint&fp-x=0.5&fp-y=0.42&fp-z=2.2",
+          "alt": "Detalhe da gola com botões de pressão e do forro preto da jaqueta, no cabide"
+        }
+      ],
       "vendedor": {
         "nomePublico": "Bia",
         "cidade": "Brasília, DF"
@@ -35,6 +49,20 @@
       "precoCentavos": 14900,
       "fotoUrl": "https://images.unsplash.com/photo-1584917865442-de89df76afd3?auto=format&fit=crop&w=800&q=80",
       "fotoAlt": "Bolsa de mão vermelha estruturada com fecho prateado",
+      "fotos": [
+        {
+          "url": "https://images.unsplash.com/photo-1584917865442-de89df76afd3?auto=format&fit=crop&w=800&q=80",
+          "alt": "Bolsa de mão vermelha estruturada com fecho prateado"
+        },
+        {
+          "url": "https://images.unsplash.com/photo-1584917865442-de89df76afd3?auto=format&fit=crop&w=800&h=1000&q=80&crop=focalpoint&fp-x=0.4&fp-y=0.4&fp-z=2",
+          "alt": "Alça de mão e parte de cima da bolsa vermelho-cereja"
+        },
+        {
+          "url": "https://images.unsplash.com/photo-1584917865442-de89df76afd3?auto=format&fit=crop&w=800&h=1000&q=80&crop=focalpoint&fp-x=0.51&fp-y=0.57&fp-z=3",
+          "alt": "Detalhe do fecho metálico prateado na aba da bolsa vermelho-cereja"
+        }
+      ],
       "vendedor": {
         "nomePublico": "Lu",
         "cidade": "São Paulo, SP"
@@ -230,6 +258,16 @@
       "precoCentavos": 13900,
       "fotoUrl": "https://images.unsplash.com/photo-1595950653106-6c9ebd614d3a?auto=format&fit=crop&w=800&q=80",
       "fotoAlt": "Tênis em tons pastel de rosa, lilás e azul",
+      "fotos": [
+        {
+          "url": "https://images.unsplash.com/photo-1595950653106-6c9ebd614d3a?auto=format&fit=crop&w=800&q=80",
+          "alt": "Tênis em tons pastel de rosa, lilás e azul"
+        },
+        {
+          "url": "https://images.unsplash.com/photo-1595950653106-6c9ebd614d3a?auto=format&fit=crop&w=800&h=1000&q=80&crop=focalpoint&fp-x=0.33&fp-y=0.5&fp-z=2.5",
+          "alt": "Detalhe do cadarço branco e das partes em lilás, rosa e amarelo do tênis"
+        }
+      ],
       "vendedor": {
         "nomePublico": "Gabi",
         "cidade": "Florianópolis, SC"
