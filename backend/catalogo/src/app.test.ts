@@ -89,6 +89,42 @@ describe("vitrine: GET /pecas e GET /pecas/:id", () => {
   });
 });
 
+describe("galeria de fotos no GET /pecas/:id (Req. 008)", () => {
+  it("devolve a galeria na ordem, com url e texto alternativo de cada foto", async () => {
+    const { body } = await request(app).get("/pecas/demo-jaqueta-couro").expect(200);
+    expect(body.fotos).toHaveLength(3);
+    expect(body.fotos[0]).toEqual({ url: body.fotoUrl, alt: body.fotoAlt });
+    for (const foto of body.fotos) expect(foto.alt).not.toBe("");
+  });
+
+  it("peça sem galeria devolve a foto principal como única foto", async () => {
+    const peca = loja.peca("demo-scarpin-floral")!;
+    expect(peca.fotos).toBeUndefined();
+    const { body } = await request(app).get(`/pecas/${peca.id}`).expect(200);
+    expect(body.fotos).toEqual([{ url: peca.fotoUrl, alt: peca.fotoAlt }]);
+  });
+
+  it("foto de anúncio: não expõe a chave do armazenamento e ganha um texto alternativo", async () => {
+    await loja.alterarEmFila((d) => {
+      const p = d.pecas.find((x) => x.id === "demo-scarpin-floral")!;
+      p.fotos = [
+        { chave: "a1b2c3d4.jpg", url: "/fotos/a1b2c3d4.jpg" },
+        { chave: "e5f6a7b8.jpg", url: "/fotos/e5f6a7b8.jpg" },
+      ];
+    });
+    const peca = loja.peca("demo-scarpin-floral")!;
+    const { body } = await request(app).get(`/pecas/${peca.id}`).expect(200);
+    expect(body.fotos).toEqual([
+      { url: "/fotos/a1b2c3d4.jpg", alt: peca.fotoAlt },
+      { url: "/fotos/e5f6a7b8.jpg", alt: `foto 2 de 2: ${peca.titulo}` },
+    ]);
+    // toEqual garante que cada foto só tem url e alt; a vitrine usa a mesma forma pública
+    const vitrine = await request(app).get("/pecas").query({ porPagina: 48 }).expect(200);
+    const naVitrine = vitrine.body.itens.find((p: { id: string }) => p.id === peca.id);
+    expect(naVitrine.fotos.every((f: object) => !("chave" in f))).toBe(true);
+  });
+});
+
 describe("vitrine: busca, filtros, ordenação e paginação no GET /pecas (Req. 007)", () => {
   const ids = (res: request.Response) => res.body.itens.map((p: { id: string }) => p.id);
   const vitrine = (query = "") => request(app).get(`/pecas${query}`).expect(200);
