@@ -10,9 +10,11 @@ services:
     # mesma região do banco no Supabase (us-east-2, Ohio): menos atraso em cada consulta
     region: ohio
     branch: main
-    # --include=dev: o build do Next.js e o tsx (que roda o serviço de contas) são devDependencies
+    # --include=dev: o build do Next.js e o esbuild (que empacota os serviços) são devDependencies
     buildCommand: npm ci --include=dev && npm run build
-    startCommand: npm start
+    # o mesmo que `npm start`, sem o processo do npm na frente: no plano grátis (512 MB) cada MB conta.
+    # Sobe os três serviços num processo `node` e o site noutro (scripts/iniciar.mjs).
+    startCommand: node scripts/iniciar.mjs
     # passa pelo site e pelo proxy até o serviço de contas: se responder, está tudo de pé
     healthCheckPath: /api/auth/saude
     envVars:

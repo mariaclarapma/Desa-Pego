@@ -236,7 +236,7 @@ npm run dev        # site em http://localhost:3000 · catálogo :3001 · contas 
 | `npm run cobertura` | cobertura combinada (Vitest + Cypress) com relatório em `coverage/index.html`; falha abaixo de 80% |
 | `npm run lint` / `npm run typecheck` / `npm run build` | lint, checagem de tipos e build de produção |
 | `npm run reset-db` | volta o catálogo ao estado inicial |
-| `npm start` | modo produção (depois do `npm run build`): site, contas, catálogo e pedidos juntos, como na hospedagem |
+| `npm start` | modo produção (depois do `npm run build`, que também empacota os serviços em `backend/*/dist/`): contas, catálogo e pedidos num processo `node` e o site noutro, como na hospedagem |
 
 ### Variáveis de ambiente
 
