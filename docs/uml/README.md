@@ -17,9 +17,9 @@ o sistema foi construído e ficou diferente do planejado em alguns pontos:
 | Um pedido por compra | Um pedido por vendedora; a compra tem um Pix só |
 
 Por isso, os diagramas de **casos de uso, classes conceitual, sequência (UC01, UC03 a UC06), componentes e implantação**
-mostram o sistema **como está hoje**. As versões planejadas foram mantidas para comparação:
+e a **sequência do UC02** (anúncios, PR #43) mostram o sistema **como está hoje**. As versões planejadas foram mantidas para comparação:
 
-- **Mantidos do planejamento:** os seis diagramas de classes por caso de uso (modelo de projeto inicial), a sequência do UC02 (o Módulo 02 ainda está em desenvolvimento) e as versões planejadas de componentes e implantação.
+- **Mantidos do planejamento:** os seis diagramas de classes por caso de uso (modelo de projeto inicial) e as versões planejadas de componentes e implantação.
 
 ## Organização
 
@@ -27,7 +27,7 @@ mostram o sistema **como está hoje**. As versões planejadas foram mantidas par
 | --- | --- |
 | [casos-de-uso](casos-de-uso) | [casos de uso do MVP](casos-de-uso/casos-de-uso-desa-pego.svg) |
 | [classes](classes) | [**conceitual**](classes/conceitual-desa-pego.svg) (entidades do domínio) e os seis diagramas de projeto por caso de uso (`uc01` a `uc06`, do planejamento) |
-| [sequencia](sequencia) | um por caso de uso: [UC01](sequencia/uc01-cadastrar-conta-autenticar.svg), [UC02](sequencia/uc02-publicar-anuncio-simulador.svg) (planejado), [UC03](sequencia/uc03-buscar-pecas-vitrine.svg), [UC04](sequencia/uc04-checkout-reserva-pix.svg), [UC05](sequencia/uc05-confirmar-pagamento-pix.svg) e [UC06](sequencia/uc06-confirmar-recebimento-liberar-saldo.svg) |
+| [sequencia](sequencia) | um por caso de uso: [UC01](sequencia/uc01-cadastrar-conta-autenticar.svg), [UC02](sequencia/uc02-publicar-anuncio-simulador.svg), [UC03](sequencia/uc03-buscar-pecas-vitrine.svg), [UC04](sequencia/uc04-checkout-reserva-pix.svg), [UC05](sequencia/uc05-confirmar-pagamento-pix.svg) e [UC06](sequencia/uc06-confirmar-recebimento-liberar-saldo.svg) |
 | [componentes](componentes) | [**atual**](componentes/componentes-desa-pego.svg) e [planejado (NestJS)](componentes/componentes-planejado-nestjs.svg) |
 | [implantacao](implantacao) | [**atual** (Render + Supabase)](implantacao/implantacao-desa-pego.svg) e [planejado (AWS)](implantacao/implantacao-planejada-aws.svg) |
 | [padroes](padroes) | [estrutura do Facade](padroes/facade-compra.svg) (`CompraFacade`) |
@@ -37,7 +37,7 @@ mostram o sistema **como está hoje**. As versões planejadas foram mantidas par
 | UC | Caso de uso | Ator | Requisitos | Onde está no código |
 | --- | --- | --- | --- | --- |
 | UC01 | Cadastrar conta e autenticar-se | Visitante | 001 | `backend/contas` |
-| UC02 | Publicar anúncio com simulação de ganho | Vendedora | 004, 005 e regra do 002 | Módulo 02, em desenvolvimento |
+| UC02 | Publicar anúncio com simulação de ganho | Vendedora | 004, 005 e regra do 002 | `backend/catalogo/src/anuncios.ts`, `core/src/pricing.ts` e `frontend/src/app/anunciar` |
 | UC03 | Buscar peças na vitrine e consultar detalhes | Visitante ou compradora | 007, 008 | `backend/catalogo` e `frontend/src/app/catalogo` |
 | UC04 | Reservar peças e fechar a compra com Pix | Compradora | 010, 011 | `backend/catalogo/src/compra-facade.ts` |
 | UC05 | Confirmar o pagamento Pix | Provedor Pix | 011, 014 | `CompraFacade` + `backend/pedidos` |

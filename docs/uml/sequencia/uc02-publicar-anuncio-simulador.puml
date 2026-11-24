@@ -1,51 +1,88 @@
 @startuml
 !include ../_estilo.iuml
-title UC02 · Publicar anúncio com simulação de ganho — Diagrama de sequência\n<size:11>Requisitos 004 e 005 (e regra do 002) · Módulo 02 (Anúncios e Simulador) · «planejado: módulo em desenvolvimento»</size>
+title UC02 · Publicar anúncio com simulação de ganho — Diagrama de sequência\n<size:11>Requisitos 004 e 005 (e regra do 002) · Módulo 02 (Anúncios e Simulador) · como está na main (PR #43)</size>
 autonumber
 hide footbox
 
-actor Vendedor
-participant "Frontend" as FE
-participant ":AnuncioController" as C
-participant ":AnuncioService" as S
-participant "Módulo 01\n(ContasPort)" as M1
-participant "Módulo 05\n(ConfiguracaoPort)" as M5
-participant "Amazon S3" as S3
-database "Banco de dados" as DB
+actor Vendedora
+participant "Site (Next.js)\n/anunciar" as FE
+participant "app/core\nsimularGanho" as CORE
+participant "Serviço de pedidos\n(Módulo 05)" as M5
+participant "Catálogo\nrotas /anuncios" as CAT
+participant "Serviço de contas\n(Módulo 01)" as M1
+participant "«interface»\nArmazenamentoFotos" as ARM
+database "Loja\n(fila de alterações)" as LOJA
 
-== Simulação de ganho ==
-Vendedor -> FE : escolhe categoria e condição
-FE -> C : obterParametrosSimulacao(categoria, condicao)
-C -> S : obterParametrosSimulacao(categoria, condicao)
-S -> M5 : obterComissaoETaxaPix()
-S -> M5 : obterFaixaSugerida(categoria, condicao)
-S --> FE : comissão, taxa Pix e faixa sugerida
-loop a cada alteração do preço
-  Vendedor -> FE : digita o preço
-  FE -> FE : CalculadoraPreco.calcular(preco, comissao, taxaPix)
-  FE --> Vendedor : mostra comissão, taxa e valor líquido
+== Abrir o formulário ==
+Vendedora -> FE : abre "anunciar peça"
+alt token sem chave Pix (Req. 002)
+  FE --> Vendedora : aviso com o link para cadastrar a chave Pix
+else tem chave Pix
+  FE -> M5 : GET /api/gestao/config
+  M5 --> FE : comissão, taxa do Pix e faixas de preço sugeridas
+  FE -> CAT : GET /api/config
+  CAT --> FE : frete
 end
-note right of FE : o cálculo roda no navegador,\nsem chamar a API
 
-== Fotos ==
-Vendedor -> FE : escolhe de 1 a 5 fotos
-FE -> C : gerarUrlsDeUpload(quantidade)
-C -> S : gerarUrlsDeUpload(quantidade)
-S --> FE : URLs pré-assinadas
-FE -> S3 : envia cada foto direto ao S3
+== Simulação de ganho (no navegador) ==
+loop a cada alteração do preço, da categoria ou da condição
+  Vendedora -> FE : digita o preço
+  FE -> CORE : simularGanho(preço, frete, taxas)
+  CORE --> FE : comissão, taxa do Pix e valor líquido
+  FE --> Vendedora : mostra o ganho e a faixa sugerida
+end
+note right of CORE : a mesma conta (calcularRepasse) que o\nMódulo 05 usa para lançar na carteira.\nA faixa sugerida só avisa: quem decide\no preço é a vendedora.
+
+== Fotos (1 a 5, JPG, PNG ou WebP, até 5 MB) ==
+Vendedora -> FE : escolhe as fotos
+FE -> CAT : POST /api/anuncios/fotos (tipo e tamanho de cada uma)
+alt quantidade, tipo ou tamanho fora da regra
+  CAT --> FE : 400 com a mensagem do campo
+else dentro da regra
+  CAT -> ARM : gerarUrlUpload(chave, tipo, 5 MB)
+  ARM --> CAT : URL assinada (vale 10 minutos)
+  CAT -> LOJA : registra o envio em nome da vendedora
+  CAT --> FE : uma URL por foto
+  loop cada foto
+    FE -> ARM : PUT na URL assinada (sem token)
+    ARM -> ARM : confere assinatura, prazo, tipo,\ntamanho e primeiros bytes
+    alt arquivo que não é imagem
+      ARM --> FE : 415 "o arquivo não é uma imagem JPG, PNG ou WebP."
+    else foto válida
+      ARM --> FE : 204
+    end
+  end
+end
 
 == Publicação ==
-Vendedor -> FE : clica em "Publicar"
-FE -> C : publicar(dados do anúncio)
-C -> S : publicar(vendedorId, dados)
-S -> M1 : possuiChavePix(vendedorId)
-alt vendedor sem chave Pix
-  S --> FE : erro "Cadastre sua chave Pix para anunciar"
-else dados ou fotos inválidos
-  S --> FE : erro indicando o campo
-else tudo certo
-  S -> DB : salva anúncio com status DISPONIVEL
-  S --> FE : anúncio publicado
+Vendedora -> FE : clica em "publicar anúncio"
+FE -> CAT : POST /api/anuncios (campos e chaves das fotos)
+CAT -> CAT : valida (Zod): campos, categoria de moda,\npreço maior que zero e de 1 a 5 fotos
+alt dados inválidos
+  CAT --> FE : 400 indicando o campo
+else dados válidos
+  CAT -> M1 : GET /auth/vendedoras/:id
+  M1 --> CAT : nome na vitrine e cidade
+  alt perfil de vendedora incompleto
+    CAT --> FE : 403 "complete seu perfil de vendedora"
+  else perfil completo
+    CAT -> LOJA : alterarEmFila(publicar)
+    LOJA -> LOJA : confere que as fotos são desta vendedora,\nforam enviadas e não estão em outro anúncio
+    alt foto de outra conta ou não enviada
+      LOJA --> CAT : recusa
+      CAT --> FE : 400 "uma das fotos não foi encontrada"
+    else tudo certo
+      LOJA -> LOJA : cria a peça "disponivel" com vendedoraId,\nfotos (a primeira é a capa) e vincula as fotos
+      LOJA --> CAT : peça
+      CAT --> FE : 201 anúncio
+      FE --> Vendedora : abre "meus anúncios" com o aviso "publicado"
+    end
+  end
 end
-FE --> Vendedor : mostra o resultado
+
+note over FE, LOJA
+  Gestão do anúncio (mesmas regras): editar, pausar, reativar e excluir só a dona;
+  peça reservada, vendida ou num pedido esperando o Pix não muda (409).
+  Hoje o ArmazenamentoFotos é o local (pasta do servidor); Supabase Storage e S3 estão nos PRs #48 e #45.
+end note
 @enduml
