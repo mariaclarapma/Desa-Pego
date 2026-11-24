@@ -9,9 +9,9 @@ import { ArmazenamentoLocal } from "./fotos.js";
 import { CompraFacade } from "./compra-facade.js";
 import type { GestaoPedidos } from "./gestao.js";
 import type { Loja, Peca } from "./loja.js";
-import { Recusa, statusAtual } from "./regras.js";
+import { fotosDaPeca, Recusa, statusAtual } from "./regras.js";
 
-export { statusAtual } from "./regras.js";
+export { fotosDaPeca, statusAtual } from "./regras.js";
 
 export interface ConfigCatalogo {
   origens: string[];
@@ -112,8 +112,12 @@ export function criarAppCatalogo(loja: Loja, config: ConfigCatalogo, agora: () =
     if (!peca || peca.oculta || peca.pausada) throw new Recusa(404, "essa peça não existe mais.");
     return peca;
   };
-  // quem reservou nunca aparece para o público
-  const pecaPublica = ({ oculta: _oculta, motivoOculta: _motivo, reservadaPor: _por, pausada: _pausada, ...p }: Peca) => ({ ...p, status: statusAtual(p, agora()) });
+  // quem reservou nunca aparece para o público; a galeria sai sem as chaves do armazenamento
+  const pecaPublica = ({ oculta: _oculta, motivoOculta: _motivo, reservadaPor: _por, pausada: _pausada, ...p }: Peca) => ({
+    ...p,
+    status: statusAtual(p, agora()),
+    fotos: fotosDaPeca(p),
+  });
   /** Frete fixo: o que a administração definiu no painel ou, se nada, o padrão do servidor. */
   const freteAtual = () => loja.configuracao().freteCentavos ?? config.freteCentavos;
   const compras = new CompraFacade(loja, config.gestao ?? null, { frete: freteAtual, agora });

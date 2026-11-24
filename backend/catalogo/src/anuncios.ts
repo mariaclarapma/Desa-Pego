@@ -300,7 +300,7 @@ export function rotasAnuncios(
       exigirAlteravel(p);
       vincularFotos(d, dados.fotos, confirmadas, usuaria.id, p.id);
       const { fotos: chaves, ...campos } = dados;
-      const antes = (p.fotos ?? []).map((f) => f.chave);
+      const antes = (p.fotos ?? []).flatMap((f) => (f.chave ? [f.chave] : []));
       const fotos = chaves.map((chave) => ({ chave, url: armazenamento.urlPublica(chave) }));
       Object.assign(p, campos, { fotos, fotoUrl: fotos[0].url, fotoAlt: `foto de ${campos.titulo}`, vendedor, atualizadoEm: new Date(regras.agora()).toISOString() });
       // fotos que saíram do anúncio deixam de existir
@@ -341,7 +341,7 @@ export function rotasAnuncios(
       const p = meuAnuncio(pecaId, usuaria);
       exigirAlteravel(p);
       d.pecas = d.pecas.filter((x) => x.id !== p.id);
-      const fotos = (p.fotos ?? []).map((f) => f.chave);
+      const fotos = (p.fotos ?? []).flatMap((f) => (f.chave ? [f.chave] : []));
       d.fotos = (d.fotos ?? []).filter((f) => !fotos.includes(f.chave));
       return fotos;
     });

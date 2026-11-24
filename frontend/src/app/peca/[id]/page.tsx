@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
-import Image from "next/image";
 import Link from "next/link";
 import { notFound } from "next/navigation";
+import { GaleriaFotos } from "@/components/catalogo/GaleriaFotos";
 import { BotaoSacola } from "@/components/sacola/BotaoSacola";
 import { ApiIndisponivel } from "@/components/ui/ApiIndisponivel";
 import { ConditionBadge } from "@/components/ui/ConditionBadge";
@@ -38,6 +38,8 @@ export default async function PecaPage({ params }: Props) {
   const status = statusAtual(peca);
   const categoria = CATEGORIAS.find((c) => c.slug === peca.categoria);
   const medidas = Object.entries(peca.medidas ?? {});
+  // a API manda a galeria; se vier sem (versão antiga), a foto principal vira a única foto
+  const fotos = peca.fotos?.length ? peca.fotos : [{ url: peca.fotoUrl, alt: peca.fotoAlt }];
 
   return (
     <div className="mx-auto max-w-6xl px-4 py-10 sm:px-6 lg:px-8 lg:py-16">
@@ -58,22 +60,19 @@ export default async function PecaPage({ params }: Props) {
       <div className="grid gap-10 md:grid-cols-2 lg:gap-16">
         <div className="relative">
           <Tape className="-top-3 left-8 -rotate-6" />
-          <div className="relative aspect-[4/5] overflow-hidden rounded-[1.5rem] border-2 border-roxo bg-nevoa-200 shadow-[6px_6px_0_0_var(--color-roxo)]">
-            <Image
-              src={peca.fotoUrl}
-              alt={peca.fotoAlt}
-              fill
-              priority
-              sizes="(min-width: 768px) 45vw, 100vw"
-              className={`object-cover ${status !== "disponivel" ? "opacity-60 grayscale" : ""}`}
-            />
+          <GaleriaFotos
+            fotos={fotos}
+            indisponivel={status !== "disponivel"}
+            adesivo={
+              status !== "disponivel" ? (
+                <Sticker tone={status === "vendida" ? "violeta" : "pervinca"} rotate={4} className="absolute -right-2 bottom-8">
+                  {status === "vendida" ? "vendida" : "reservada"}
+                </Sticker>
+              ) : null
+            }
+          >
             <ConditionBadge condicao={peca.condicao} className="absolute top-3 left-3" />
-          </div>
-          {status !== "disponivel" ? (
-            <Sticker tone={status === "vendida" ? "violeta" : "pervinca"} rotate={4} className="absolute -right-2 bottom-8">
-              {status === "vendida" ? "vendida" : "reservada"}
-            </Sticker>
-          ) : null}
+          </GaleriaFotos>
         </div>
 
         <div className="space-y-6">

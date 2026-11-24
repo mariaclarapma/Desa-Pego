@@ -89,6 +89,88 @@ describe("vitrine: GET /pecas e GET /pecas/:id", () => {
   });
 });
 
+describe("galeria de fotos no GET /pecas/:id (Req. 008)", () => {
+  it("devolve a galeria na ordem, com url e texto alternativo de cada foto", async () => {
+    const { body } = await request(app).get("/pecas/demo-jaqueta-couro").expect(200);
+    expect(body.fotos).toHaveLength(3);
+    expect(body.fotos[0]).toEqual({ url: body.fotoUrl, alt: body.fotoAlt });
+    for (const foto of body.fotos) expect(foto.alt).not.toBe("");
+  });
+
+  it("peça sem galeria devolve a foto principal como única foto", async () => {
+    const peca = loja.peca("demo-scarpin-floral")!;
+    expect(peca.fotos).toBeUndefined();
+    const { body } = await request(app).get(`/pecas/${peca.id}`).expect(200);
+    expect(body.fotos).toEqual([{ url: peca.fotoUrl, alt: peca.fotoAlt }]);
+  });
+
+  it("foto de anúncio: não expõe a chave do armazenamento e ganha um texto alternativo", async () => {
+    await loja.alterarEmFila((d) => {
+      const p = d.pecas.find((x) => x.id === "demo-scarpin-floral")!;
+      p.fotos = [
+        { chave: "a1b2c3d4.jpg", url: "/fotos/a1b2c3d4.jpg" },
+        { chave: "e5f6a7b8.jpg", url: "/fotos/e5f6a7b8.jpg" },
+      ];
+    });
+    const peca = loja.peca("demo-scarpin-floral")!;
+    const { body } = await request(app).get(`/pecas/${peca.id}`).expect(200);
+    expect(body.fotos).toEqual([
+      { url: "/fotos/a1b2c3d4.jpg", alt: peca.fotoAlt },
+      { url: "/fotos/e5f6a7b8.jpg", alt: `foto 2 de 2: ${peca.titulo}` },
+    ]);
+    // toEqual garante que cada foto só tem url e alt; a vitrine usa a mesma forma pública
+    const vitrine = await request(app).get("/pecas").query({ porPagina: 48 }).expect(200);
+    const naVitrine = vitrine.body.itens.find((p: { id: string }) => p.id === peca.id);
+    expect(naVitrine.fotos.every((f: object) => !("chave" in f))).toBe(true);
+  });
+});
+
+describe("detalhes da peça: GET /pecas/:id em cada situação (Req. 009)", () => {
+  it("disponível: devolve a peça com status disponivel, sem campos internos", async () => {
+    const peca = disponivel();
+    const { body } = await request(app).get(`/pecas/${peca.id}`).expect(200);
+    expect(body).toMatchObject({ id: peca.id, titulo: peca.titulo, precoCentavos: peca.precoCentavos, status: "disponivel" });
+    expect(body.vendedor).toEqual(peca.vendedor);
+    for (const campo of ["oculta", "motivoOculta", "pausada", "reservadaPor"]) expect(body).not.toHaveProperty(campo);
+  });
+
+  it("reservada: status reservada com o fim da reserva, sem mostrar quem reservou", async () => {
+    const peca = disponivel();
+    await request(app).post(`/pecas/${peca.id}/reservar`).set(await conta(ANA)).expect(200);
+
+    const { body } = await request(app).get(`/pecas/${peca.id}`).expect(200);
+    expect(body.status).toBe("reservada");
+    expect(new Date(body.reservadaAte).getTime()).toBe(relogio + 15 * 60_000);
+    expect(body).not.toHaveProperty("reservadaPor");
+    expect(JSON.stringify(body)).not.toContain(ANA);
+  });
+
+  it("vendida: a página continua abrindo, com status vendida", async () => {
+    const peca = disponivel();
+    loja.peca(peca.id)!.status = "vendida";
+    const { body } = await request(app).get(`/pecas/${peca.id}`).expect(200);
+    expect(body).toMatchObject({ id: peca.id, status: "vendida" });
+  });
+
+  it("o status vem do banco a cada chamada: muda assim que a peça é vendida", async () => {
+    const peca = disponivel();
+    expect((await request(app).get(`/pecas/${peca.id}`).expect(200)).body.status).toBe("disponivel");
+    loja.peca(peca.id)!.status = "vendida";
+    expect((await request(app).get(`/pecas/${peca.id}`).expect(200)).body.status).toBe("vendida");
+  });
+
+  it("inexistente, ocultada pela administração ou pausada pela vendedora: 404 com mensagem", async () => {
+    const naoExiste = await request(app).get("/pecas/nao-existe").expect(404);
+    expect(naoExiste.body.erro).toBe("essa peça não existe mais.");
+
+    loja.peca("demo-bolsa-cereja")!.oculta = true;
+    loja.peca("demo-bomber-caramelo")!.pausada = true;
+    for (const id of ["demo-bolsa-cereja", "demo-bomber-caramelo"]) {
+      expect((await request(app).get(`/pecas/${id}`).expect(404)).body).toEqual(naoExiste.body);
+    }
+  });
+});
+
 describe("vitrine: busca, filtros, ordenação e paginação no GET /pecas (Req. 007)", () => {
   const ids = (res: request.Response) => res.body.itens.map((p: { id: string }) => p.id);
   const vitrine = (query = "") => request(app).get(`/pecas${query}`).expect(200);
@@ -101,19 +183,22 @@ describe("vitrine: busca, filtros, ordenação e paginação no GET /pecas (Req.
     expect(ids(res).at(-1)).toBe("demo-oculos-redondo"); // criada em 08/11, a mais antiga
   });
 
-  it("lista só peças ativas: tira vendidas e ocultas; reservada aparece com o status de reservada", async () => {
+  it("lista só peças ativas (Req. 009): tira vendidas, ocultas e pausadas; reservada aparece com o status de reservada", async () => {
     loja.peca("demo-jaqueta-couro")!.status = "vendida";
     loja.peca("demo-bolsa-cereja")!.oculta = true;
+    loja.peca("demo-bomber-caramelo")!.pausada = true;
     Object.assign(loja.peca("demo-scarpin-floral")!, { status: "reservada", reservadaAte: new Date(relogio + 60_000).toISOString() });
 
     const res = await vitrine();
-    expect(res.body.total).toBe(9);
+    expect(res.body.total).toBe(8);
     expect(ids(res)).not.toContain("demo-jaqueta-couro");
     expect(ids(res)).not.toContain("demo-bolsa-cereja");
+    expect(ids(res)).not.toContain("demo-bomber-caramelo");
     expect(res.body.itens.find((p: { id: string }) => p.id === "demo-scarpin-floral").status).toBe("reservada");
     // campos internos da administração não vazam para o público
     expect(res.body.itens[0]).not.toHaveProperty("oculta");
     expect(res.body.itens[0]).not.toHaveProperty("motivoOculta");
+    expect(res.body.itens[0]).not.toHaveProperty("pausada");
   });
 
   it("busca por título, marca e descrição, sem diferenciar maiúsculas e acentos", async () => {
