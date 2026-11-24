@@ -148,8 +148,11 @@ O **simulador de ganho** do formulário usa `calcularRepasse`, de `core/src/pric
 arquitetura), a mesma função que o serviço de pedidos usa para gravar o pedido e a carteira. Comissão e taxa do Pix
 vêm de `GET /gestao/config`, e o frete de `GET /config`.
 
-> **Fotos:** por enquanto ficam numa pasta local (`backend/fotos/`), que no Render é apagada a cada deploy. Antes de
-> produção, o grupo precisa escolher entre Supabase Storage e Amazon S3. Veja [`docs/FOTOS.md`](../docs/FOTOS.md).
+> **Fotos:** em produção ficam no Supabase Storage (`SUPABASE_URL` e `SUPABASE_SECRET_KEY`); sem essas variáveis,
+> numa pasta local (`backend/fotos/`), que no Render é apagada a cada deploy. Veja [`docs/FOTOS.md`](../docs/FOTOS.md).
+>
+> **Catálogo:** com `DATABASE_URL`, peças, reservas, pedidos e fotos ficam no schema `catalogo` do mesmo PostgreSQL;
+> sem ela, no `db.json`. Veja [`docs/CATALOGO-SUPABASE.md`](../docs/CATALOGO-SUPABASE.md).
 
 Os testes ficam em `catalogo/src/anuncios.test.ts` (backend), `core/src/pricing.test.ts` (cálculo) e
 `frontend/src/components/anuncios/FormularioAnuncio.test.tsx` (formulário e simulador).

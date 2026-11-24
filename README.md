@@ -250,7 +250,8 @@ Render.
 | `API_KEYS` | chaves aceitas no `X-API-Key` das rotas de integração (separadas por vírgula) | sem chave, a integração fica desligada | gerada pelo Render |
 | `PIX_CRIPTO_CHAVE` | cifra as chaves Pix das vendedoras no banco (32 bytes em base64). **Nunca troque nem perca**: guarde no cofre de senhas ([docs/CHAVE-PIX.md](docs/CHAVE-PIX.md)) | temporária se o banco for em memória; **obrigatória** com `DATABASE_URL` | **obrigatório**, no painel do Render |
 | `CORS_ORIGENS` | origens do frontend liberadas no CORS (separadas por vírgula) | `http://localhost:3000` | **obrigatório** |
-| `DATABASE_URL` | PostgreSQL das contas e dos pedidos (Supabase; schemas `contas` e `pedidos`) | vazio = banco em memória | **obrigatório** |
+| `DATABASE_URL` | PostgreSQL das contas, dos pedidos e do catálogo (Supabase; schemas `contas`, `pedidos` e `catalogo`) | vazio = contas e pedidos em memória, catálogo no `db.json` | **obrigatório** |
+| `SUPABASE_URL`, `SUPABASE_SECRET_KEY` | fotos dos anúncios no Supabase Storage ([docs/FOTOS.md](docs/FOTOS.md)); a chave é secreta e fica só no servidor | vazias = pasta local `backend/fotos/` | no painel do Render |
 | `ADMIN_MASTER_EMAIL`, `ADMIN_MASTER_PASSWORD` | conta da administradora master (Lucy), criada ou promovida ao iniciar | sem elas, não há master | no painel do Render |
 | `LIMITE_CADASTROS_POR_HORA` | cadastros por hora por IP | `10` | `10` |
 | `TRUST_PROXY` | proxies confiáveis para ler o IP real | `loopback` | `loopback, uniquelocal` |

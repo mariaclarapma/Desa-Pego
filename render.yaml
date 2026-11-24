@@ -1,5 +1,6 @@
 # Hospedagem no Render (plano grátis): um único serviço roda o site (Next.js), o serviço de contas
-# e o catálogo, como no `npm run dev`. As contas ficam no PostgreSQL do Supabase (DATABASE_URL).
+# e o catálogo, como no `npm run dev`. Contas, pedidos e catálogo ficam no PostgreSQL do Supabase
+# (DATABASE_URL); as fotos dos anúncios, no Supabase Storage (SUPABASE_URL e SUPABASE_SECRET_KEY).
 # Passo a passo no README, seção "Hospedagem".
 services:
   - type: web
@@ -31,6 +32,12 @@ services:
         sync: false
       # cole a URL do Supabase (Connect → Session pooler) no painel; nunca no repositório
       - key: DATABASE_URL
+        sync: false
+      # fotos dos anúncios no Supabase Storage (docs/FOTOS.md): endereço do projeto e secret key,
+      # só no painel. A URL também é lida no build (CSP e next/image): mudou, faça novo deploy.
+      - key: SUPABASE_URL
+        sync: false
+      - key: SUPABASE_SECRET_KEY
         sync: false
       # o Next.js (loopback) e o balanceador do Render (rede interna) ficam na frente do serviço de contas
       - key: TRUST_PROXY

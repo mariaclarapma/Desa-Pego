@@ -1,58 +1,123 @@
 # Fotos dos anúncios (Req. 004)
 
-Este documento explica como as fotos dos anúncios são enviadas e guardadas hoje, qual é a limitação atual e o que
-falta para usar em produção.
+Este documento explica como as fotos dos anúncios são enviadas, conferidas, exibidas e apagadas, como configurar o
+**Supabase Storage** (plano gratuito, o mesmo projeto das contas) e o que ainda falta validar no projeto hospedado.
+O Amazon S3 da arquitetura fica para uma etapa futura (PR #45, em rascunho): a interface é a mesma.
 
-## 1. Como funciona
+## 1. Adaptadores
 
-O navegador nunca manda a foto pela rota do anúncio. Ele pede uma **URL pré-assinada** e envia o arquivo direto para
-o armazenamento, como prevê a arquitetura (§5.2, Amazon S3 com URL pré-assinada).
+As rotas só conhecem a interface `ArmazenamentoFotos` (`backend/catalogo/src/fotos.ts`), o nome do diagrama de
+classes do UC02:
+
+| Adaptador | Quando é usado | Onde fica a foto |
+| --- | --- | --- |
+| `ArmazenamentoSupabase` (`fotos-supabase.ts`) | `SUPABASE_URL` e `SUPABASE_SECRET_KEY` definidos (produção) | buckets do Supabase Storage |
+| `ArmazenamentoLocal` (`fotos.ts`) | sem essas variáveis (desenvolvimento e testes) | pasta `backend/fotos/` (ou `PASTA_FOTOS`), fora do Git |
+
+O catálogo escolhe sozinho ao iniciar e mostra no log qual está em uso. Em produção sem o Supabase, ele avisa: no
+Render grátis a pasta local é apagada a cada deploy.
+
+## 2. Como funciona com o Supabase Storage
+
+Dois buckets no mesmo projeto:
+
+- **`anuncios-envios`** (privado): recebe o arquivo direto do navegador. Só aceita JPG, PNG e WebP de até 5 MB.
+- **`anuncios-fotos`** (público para leitura): só recebe a foto depois que a API a conferiu.
 
 | Etapa | Onde | O que acontece |
 | --- | --- | --- |
-| Pedido de envio | `POST /anuncios/fotos` (catálogo) | Exige login e chave Pix. Aceita de 1 a 5 arquivos, só `image/jpeg`, `image/png` ou `image/webp`, até 5 MB cada. Devolve, para cada foto, uma chave e uma URL assinada (HMAC-SHA256) que vale 10 minutos, para aquele tipo e aquele tamanho máximo. |
-| Envio | `PUT /fotos/:chave?…&sig=…` | Sem token: a assinatura autoriza. Confere a assinatura, o prazo, o `Content-Type` e os **primeiros bytes do arquivo** (um texto com o nome `.png` é recusado com 415). Cada URL vale para um envio só. |
-| Uso no anúncio | `POST /anuncios`, `PUT /anuncios/:id` | Só aceita fotos que a própria conta enviou e que não estão em outro anúncio. A primeira vira a capa (`fotoUrl`). |
-| Exibição | `GET /fotos/:chave` | Pública, com cache longo (a chave nunca muda de conteúdo). |
-| Remoção | `PUT /anuncios/:id` e `DELETE /anuncios/:id` | Fotos que saem do anúncio, ou do anúncio excluído, são apagadas do armazenamento. |
+| 1. Pedido de envio | `POST /anuncios/fotos` | Exige login e chave Pix. Aceita de 1 a 5 arquivos, só `image/jpeg`, `image/png` ou `image/webp`, até 5 MB cada. Registra cada envio autorizado em nome da vendedora e devolve uma **URL de envio assinada** do Supabase para cada foto. |
+| 2. Envio | navegador → `PUT https://<projeto>.supabase.co/storage/v1/object/upload/sign/anuncios-envios/<chave>?token=…` | A URL vale só para aquele caminho, por 2 horas, e **não sobrescreve** um arquivo que já esteja lá. O próprio bucket recusa outro tipo e arquivo acima de 5 MB. O navegador nunca recebe a chave secreta. |
+| 3. Conferência | `POST /anuncios` ou `PUT /anuncios/:id` | Primeiro a API confere que cada foto é um envio autorizado **desta vendedora** e que não está em outro anúncio, sem tocar no Storage. Depois lê os 12 primeiros bytes do envio e confere tamanho total, tipo gravado e assinatura do formato (um texto com nome `.png` é recusado). Só então copia o arquivo para `anuncios-fotos`. |
+| 4. Vínculo | dentro da fila da loja | A foto é marcada como conferida e vinculada ao anúncio (`fotos.peca_id` no banco). A primeira vira a capa (`fotoUrl`). Depois de salvo, a cópia em `anuncios-envios` é apagada. |
+| 5. Exibição | `next/image` | `https://<projeto>.supabase.co/storage/v1/object/public/anuncios-fotos/<chave>`. |
+| 6. Troca | `PUT /anuncios/:id` | As fotos novas são conferidas antes. As que saíram só são apagadas **depois** que o anúncio foi salvo. Se apagar falhar, a edição continua valendo e o erro vai para o log. |
+| 7. Exclusão | `DELETE /anuncios/:id` | O anúncio sai e depois as fotos são apagadas de `anuncios-fotos`. |
+| 8. Limpeza | a cada hora (`servidor.ts`) | Envios pedidos há mais de 24 horas que não entraram em anúncio são apagados (registro e arquivo). |
 
-O armazenamento fica atrás da interface `ArmazenamentoFotos` (`backend/catalogo/src/fotos.ts`), o mesmo nome do
-diagrama de classes do UC02. As rotas não sabem onde a foto fica.
+Como a URL assinada não sobrescreve, o arquivo copiado na etapa 3 é o mesmo que foi conferido. Outra vendedora não
+consegue usar, trocar nem apagar fotos de um anúncio que não é dela: a API recusa antes de chamar o Storage.
 
-## 2. Limitação atual
+Com o adaptador local, a etapa 2 é um `PUT /fotos/:chave` com assinatura HMAC (a própria API confere tipo, tamanho e
+primeiros bytes) e a exibição é por `GET /fotos/:chave`. Essas duas rotas só existem com o adaptador local.
 
-Hoje só existe o **`ArmazenamentoLocal`**: as fotos ficam numa pasta do servidor do catálogo (`backend/fotos/`, ou a
-pasta da variável `PASTA_FOTOS`), fora do Git.
+## 3. Cabe no plano gratuito?
 
-> **No Render (plano grátis), o disco é apagado a cada deploy e a cada reinício.** Todas as fotos somem, e os anúncios
-> ficam com a imagem quebrada. Serve para desenvolvimento, testes e demonstração local, **não para produção**.
+Limites do plano gratuito do Supabase (página de preços, novembro de 2026):
 
-Outras limitações da versão local:
-
-- uma única instância do catálogo (a pasta não é compartilhada);
-- sem CDN, sem miniaturas e sem conversão para WebP/AVIF (§4.1 da arquitetura);
-- a URL assinada usa o `JWT_SECRET` como segredo do HMAC; um adaptador de nuvem usaria as credenciais do provedor;
-- fotos pedidas e nunca usadas num anúncio ficam no registro (`fotos` em `db.json`) e na pasta até alguém limpar.
-
-## 3. Decisão pendente do grupo
-
-O documento de arquitetura escolhe o **Amazon S3**, mas nada foi configurado (não há bucket nem credenciais). Como o
-grupo já usa o Supabase, há duas opções:
-
-| Opção | Prós | Contras |
+| Recurso | Limite | Uso esperado no MVP |
 | --- | --- | --- |
-| **Supabase Storage** | o projeto já usa Supabase; tem URL assinada para envio (`createSignedUploadUrl`); plano grátis de 1 GB | diverge do "S3" escrito na arquitetura: precisa de um ADR registrando a troca |
-| **Amazon S3** | segue a arquitetura à risca; integra com CloudFront/Cloudflare | exige conta AWS com cartão, usuário IAM e credenciais novas no Render |
+| Armazenamento de arquivos | 1 GB | até 5 MB por foto: no pior caso, cerca de 200 fotos; com fotos de celular de 2 a 3 MB, de 300 a 500 |
+| Tráfego (egress) | 5 GB por mês, mais 5 GB de egress em cache | o `next/image` guarda a versão otimizada por 30 dias (`minimumCacheTTL`), então cada original sai do Supabase poucas vezes |
+| Banco de dados | 500 MB | o catálogo ocupa poucos MB |
+| Tamanho máximo de arquivo | 50 MB | o bucket limita a 5 MB |
 
-## 4. O que falta para produção
+**Conclusão:** cabe para o MVP e a demonstração. Os riscos são:
 
-1. **Decidir** entre Supabase Storage e S3 e registrar a decisão (ADR no documento de arquitetura).
-2. **Criar o bucket** com leitura pública só das fotos publicadas, e escrita apenas por URL assinada.
-3. **Escrever o adaptador** (`ArmazenamentoSupabase` ou `ArmazenamentoS3`) com os mesmos métodos de `ArmazenamentoFotos`
-   e trocar o `new ArmazenamentoLocal(...)` em `backend/catalogo/src/servidor.ts`. As rotas e os testes de regra não mudam.
-4. **Variáveis no Render** (nunca no Git): por exemplo `SUPABASE_URL` e `SUPABASE_SERVICE_ROLE_KEY`, ou
-   `AWS_REGION`, `S3_BUCKET`, `AWS_ACCESS_KEY_ID` e `AWS_SECRET_ACCESS_KEY`, todas com `sync: false` no `render.yaml`.
-5. **CSP**: incluir o host das fotos em `img-src` e em `connect-src` (o navegador envia direto para ele) no
-   `frontend/next.config.ts`, e o host em `images.remotePatterns`.
-6. **Limpeza**: um job que apague as fotos enviadas há mais de um dia que não entraram em nenhum anúncio.
-7. **Backup e LGPD**: versionamento do bucket (§8.1) e remoção das fotos quando a conta da vendedora for excluída.
+- o Render grátis dorme e perde o cache do `next/image`, e cada volta baixa as fotos de novo;
+- o projeto gratuito do Supabase pausa depois de 7 dias sem uso (vale também para as contas);
+- sem transformação de imagem no Storage, que só existe no plano pago.
+
+Se o tráfego apertar, o próximo passo é reduzir as fotos no navegador antes do envio.
+
+## 4. Configuração no Supabase (precisa de aprovação do grupo)
+
+Nada disto foi feito no projeto hospedado. No SQL Editor do projeto:
+
+```sql
+insert into storage.buckets (id, name, public, file_size_limit, allowed_mime_types)
+values
+  ('anuncios-envios', 'anuncios-envios', false, 5242880, array['image/jpeg', 'image/png', 'image/webp']),
+  ('anuncios-fotos', 'anuncios-fotos', true, 5242880, array['image/jpeg', 'image/png', 'image/webp'])
+on conflict (id) do nothing;
+```
+
+- **Não crie políticas (RLS)** em `storage.objects` para esses buckets. Sem política, ninguém de fora lista, envia
+  nem apaga. O envio funciona só pela URL assinada pelo servidor. A leitura de `anuncios-fotos` é pública porque o
+  bucket é público, e `anuncios-envios` não tem leitura pública.
+- **Chave:** em *Project Settings → API Keys*, use uma **secret key** (`sb_secret_…`) ou a `service_role`
+  legada. Ela fica **só no servidor** (Render, `sync: false`), nunca no frontend nem no Git.
+- **CORS:** o Storage do Supabase responde ao navegador de qualquer origem; a URL assinada é que autoriza. Não há
+  nada a configurar (confira no item 2 da seção 6).
+
+## 5. Variáveis de ambiente
+
+No `.env` local (fora do Git) e no painel do Render. **Nunca no repositório.**
+
+| Variável | Exemplo fictício | Para quê |
+| --- | --- | --- |
+| `SUPABASE_URL` | `https://abcdefgh.supabase.co` | liga o Supabase Storage; também libera o host na CSP e no `next/image` (lida no build) |
+| `SUPABASE_SECRET_KEY` | *(secret key do projeto)* | segredo do servidor para assinar envios, ler, copiar e apagar |
+
+As duas vão juntas: só uma delas é erro de configuração. O `next.config.ts` libera na CSP só a origem do projeto
+(`connect-src` para o envio e `img-src` para a prévia) e, no `next/image`, só o caminho
+`/storage/v1/object/public/anuncios-fotos/**`. Depois de mudar `SUPABASE_URL` no Render, faça um novo deploy.
+
+## 6. O que foi testado e o que falta validar
+
+**Testado localmente**, com um Supabase Storage simulado (`storage-simulado.ts`, com as mesmas rotas e as regras
+dos buckets) e o pg-mem:
+
+- envio pela URL assinada, conferência, cópia para o bucket público e exibição (`fotos-supabase.test.ts`);
+- o bucket recusando outro tipo e mais de 5 MB, e a URL que não sobrescreve;
+- arquivo falso com tipo de imagem que não entra no anúncio;
+- permissões: outra vendedora não usa, troca nem apaga, e a recusa acontece antes de chamar o Storage;
+- troca que só apaga a antiga depois de salvar, exclusão e limpeza dos envios abandonados (`anuncios.test.ts`);
+- CSP e `next/image` gerados com e sem `SUPABASE_URL`.
+
+**Falta validar no Supabase de verdade** (precisa do acesso ao projeto):
+
+1. Criar os buckets (SQL acima) e conferir o limite de 5 MB e os tipos aceitos.
+2. Envio do navegador em produção: CORS, `PUT` com o arquivo no corpo, resposta 200 e recusa de outro tipo e acima
+   de 5 MB.
+3. `GET /object/authenticated` com `Range` respondendo 206 e `Content-Range`. O código também aceita 200 com o
+   arquivo inteiro.
+4. `POST /object/copy` entre buckets (`destinationBucket`) com a chave secreta.
+5. Exibição pelo `next/image` no Render e apagar na troca e na exclusão.
+6. Uso de armazenamento e de egress no painel depois da demonstração.
+
+## 7. Limitações que continuam
+
+- Sem miniaturas nem conversão para WebP/AVIF no envio; o `next/image` otimiza na exibição.
+- Ao excluir a conta da vendedora, as fotos dos anúncios dela ainda não são apagadas (LGPD).
+- Sem versionamento das fotos: no plano gratuito não há backup do Storage.

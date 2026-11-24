@@ -13,7 +13,8 @@
     "reset-db": "node -e \"require('fs').copyFileSync('db.seed.json','db.json')\"",
     "start:catalogo": "tsx catalogo/src/servidor.ts",
     "dev:pedidos": "tsx watch pedidos/src/servidor.ts",
-    "start:pedidos": "tsx pedidos/src/servidor.ts"
+    "start:pedidos": "tsx pedidos/src/servidor.ts",
+    "catalogo": "tsx catalogo/src/cli-catalogo.ts"
   },
   "devDependencies": {
     "@types/cookie-parser": "^1.4.10",

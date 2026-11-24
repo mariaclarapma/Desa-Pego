@@ -5,6 +5,7 @@ import { exigirAdminMaster, exigirLogin, type Autenticada } from "../../comum/au
 import { categoriaPermitida, CONDICOES } from "../../comum/categorias.js";
 import { cors, exigirApiKey, limiteRequisicoes } from "../../comum/seguranca.js";
 import { rotasAnuncios, rotasFotos, type ConfigAnuncios } from "./anuncios.js";
+import { ArmazenamentoLocal } from "./fotos.js";
 import { CompraFacade } from "./compra-facade.js";
 import type { GestaoPedidos } from "./gestao.js";
 import type { Loja, Peca } from "./loja.js";
@@ -249,7 +250,9 @@ export function criarAppCatalogo(loja: Loja, config: ConfigCatalogo, agora: () =
         escrita,
       }),
     );
-    app.use("/fotos", rotasFotos(loja, config.anuncios, agora));
+    // só o armazenamento local recebe e serve as fotos pela API; no Supabase é o próprio bucket
+    const { armazenamento, fotoMaxBytes } = config.anuncios;
+    if (armazenamento instanceof ArmazenamentoLocal) app.use("/fotos", rotasFotos(loja, armazenamento, fotoMaxBytes, agora));
   }
 
   // ---- painel do admin (Módulo 05): anúncios. Só a administradora master. ----
