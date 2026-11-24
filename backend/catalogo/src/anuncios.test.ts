@@ -374,7 +374,7 @@ describe("fotos num armazenamento externo (bucket simulado)", () => {
     // a nova é válida: quando a antiga é apagada, o anúncio já aponta para a nova
     const [nova] = await enviarAoBucket(ana, [{ tipo: "image/jpeg", dados: JPG }]);
     const naHoraDeApagar: string[][] = [];
-    bucket.aoRemover = () => naHoraDeApagar.push((loja.peca(anuncio.id)!.fotos ?? []).map((f) => f.chave));
+    bucket.aoRemover = () => naHoraDeApagar.push((loja.peca(anuncio.id)!.fotos ?? []).map((f) => f.chave ?? ""));
     await request(appExterno).put(`/anuncios/${anuncio.id}`).set(ana).send(anuncioValido([nova])).expect(200);
     expect(bucket.removidas).toEqual([antiga]);
     expect(naHoraDeApagar).toEqual([[nova]]);

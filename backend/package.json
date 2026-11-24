@@ -5,6 +5,7 @@
   "description": "Backend do desaPego: catálogo, contas e pedidos/carteira/admin (Express + TypeScript; contas e pedidos em PostgreSQL). No sistema final, o lugar é do NestJS.",
   "scripts": {
     "dev": "concurrently -n catalogo,contas,pedidos -c magenta,yellow,green \"npm:dev:catalogo\" \"npm:dev:contas\" \"npm:dev:pedidos\"",
+    "build": "node empacotar.mjs",
     "dev:catalogo": "tsx watch catalogo/src/servidor.ts",
     "dev:contas": "tsx watch contas/src/servidor.ts",
     "start:contas": "tsx contas/src/servidor.ts",
@@ -23,6 +24,7 @@
     "@types/pg": "^8.23.1",
     "@types/supertest": "^7.2.1",
     "@vitest/coverage-istanbul": "^3.2.7",
+    "esbuild": "^0.28.2",
     "supertest": "^7.3.2",
     "tsx": "^4.23.15",
     "typescript": "^5.9.3",

@@ -61,7 +61,10 @@ export function planejarMigracao(origem: Dados, semente: Dados, agora: number): 
   const fotos = new Map<string, TipoFoto>();
   let reconstruidas = 0;
   for (const p of dados.pecas) {
-    for (const f of p.fotos ?? []) {
+    for (const foto of p.fotos ?? []) {
+      // fotos sem chave (a galeria do seed) são endereços externos: não há arquivo nem registro de envio
+      if (!foto.chave) continue;
+      const f = { ...foto, chave: foto.chave };
       const extensao = CHAVE_FOTO.exec(f.chave)?.[1];
       const tipo = extensao ? TIPO_DA_EXTENSAO[extensao] : undefined;
       if (!tipo) {
@@ -178,8 +181,8 @@ export async function aplicarMigracao(opcoes: {
   for (const [chave, arquivo] of arquivos) await armazenamento!.publicarArquivo(chave, plano.fotos.get(chave)!, arquivo);
   if (armazenamento) {
     for (const p of dados.pecas) {
-      if (!p.fotos?.some((f) => arquivos.has(f.chave))) continue;
-      p.fotos = p.fotos.map((f) => (arquivos.has(f.chave) ? { ...f, url: armazenamento.urlPublica(f.chave) } : f));
+      if (!p.fotos?.some((f) => f.chave && arquivos.has(f.chave))) continue;
+      p.fotos = p.fotos.map((f) => (f.chave && arquivos.has(f.chave) ? { ...f, url: armazenamento.urlPublica(f.chave) } : f));
       p.fotoUrl = p.fotos[0].url;
     }
   }
@@ -212,7 +215,7 @@ export async function exportarCatalogo(opcoes: { base: string; token: string; ap
   const fotos = new Map<string, Buffer>();
   for (const p of pecas) {
     for (const f of p.fotos ?? []) {
-      if (!ehFotoLocal(f.url) || !CHAVE_FOTO.test(f.chave)) continue;
+      if (!f.chave || !ehFotoLocal(f.url) || !CHAVE_FOTO.test(f.chave)) continue;
       const resposta = await buscar(`${base}${f.url.startsWith("/api/") ? f.url : `/api${f.url}`}`, { signal: AbortSignal.timeout(30_000) });
       if (resposta.ok) fotos.set(f.chave, Buffer.from(await resposta.arrayBuffer()));
     }
