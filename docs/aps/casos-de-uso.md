@@ -10,7 +10,7 @@ cinco módulos do MVP e os três perfis: compradora, vendedora e administradora.
 | UC | Caso de uso | Ator principal | Requisitos | Situação |
 | --- | --- | --- | --- | --- |
 | UC01 | Cadastrar conta e autenticar-se | Visitante | 001 | implementado |
-| UC02 | Publicar anúncio com simulação de ganho | Vendedora | 004, 005 (regra do 002) | em desenvolvimento (Módulo 02) |
+| UC02 | Publicar anúncio com simulação de ganho | Vendedora | 004, 005 (regra do 002) | implementado (Módulo 02) |
 | UC03 | Buscar peças na vitrine e consultar detalhes | Visitante ou compradora | 007, 008 | implementado |
 | UC04 | Reservar peças e fechar a compra com Pix | Compradora | 010, 011 | implementado (padrão Facade) |
 | UC05 | Confirmar o pagamento Pix | Provedor Pix | 011, 014 | implementado (padrão Facade, Pix simulado) |
@@ -62,25 +62,27 @@ e bloquear contas). Ele aparece para mostrar o ator Administradora, mas não est
 
 ## UC02 · Publicar anúncio com simulação de ganho
 
-> **Situação:** o Módulo 02 está em desenvolvimento pelas colegas. A descrição segue os requisitos 004 e 005, e o
-> diagrama de sequência deste caso de uso ainda mostra a versão planejada.
+> **Situação:** implementado no Módulo 02 (PR #43), com testes. O [diagrama de sequência](../uml/sequencia/uc02-publicar-anuncio-simulador.svg)
+> mostra o fluxo como está no código. Por enquanto, as fotos ficam numa pasta do servidor, que o Render apaga a cada
+> deploy; levar as fotos para o Supabase Storage (ou o S3) está nos PRs #48 e #45.
 
 | Item | Descrição |
 | --- | --- |
 | **Ator principal** | Vendedora (usuária com chave Pix cadastrada) |
 | **Objetivo** | Anunciar uma peça sabendo quanto vai receber pela venda. |
-| **Pré-condições** | Estar logada e ter chave Pix cadastrada (Req. 002). |
+| **Pré-condições** | Estar logada, ter chave Pix cadastrada e o perfil de vendedora preenchido: nome na vitrine e cidade (Req. 002). |
 | **Pós-condições** | A peça aparece na vitrine como disponível, ligada à conta da vendedora (`vendedoraId`). |
 | **Inclui** | Simular ganho (preço sugerido). |
 
 **Fluxo principal**
 1. A vendedora abre "anunciar peça" e preenche título, descrição, categoria, tamanho, marca, condição e de 1 a 5 fotos.
-2. Enquanto ela digita o preço, o simulador mostra a comissão, a taxa do Pix e o valor líquido, além da faixa de preço sugerida para a categoria e a condição.
-3. A vendedora confirma e o anúncio é publicado.
+2. Enquanto ela digita o preço, o simulador mostra a comissão, a taxa do Pix e o valor líquido (com o frete), além da faixa de preço sugerida para a categoria e a condição.
+3. As fotos sobem direto para o armazenamento por um link assinado, e o sistema confere tipo, tamanho e os primeiros bytes de cada arquivo.
+4. A vendedora confirma, o anúncio é publicado como disponível e ela vai para "meus anúncios".
 
 **Fluxos alternativos**
-- **A1 · Sem chave Pix:** o sistema pede o cadastro da chave antes de publicar.
-- **A2 · Foto inválida:** formato diferente de JPG, PNG ou WebP, ou arquivo grande demais, é recusado.
+- **A1 · Sem chave Pix ou sem perfil de vendedora:** o sistema pede o cadastro antes de publicar.
+- **A2 · Foto inválida:** formato diferente de JPG, PNG ou WebP, arquivo acima de 5 MB ou que não é imagem de verdade, é recusado.
 - **A3 · Preço fora da sugestão:** o sistema só avisa. A vendedora pode manter o preço.
 - **A4 · Editar ou excluir peça reservada ou vendida:** o sistema bloqueia.
 
@@ -89,10 +91,10 @@ e bloquear contas). Ele aparece para mostrar o ator Administradora, mas não est
 > preço sem surpresas**.
 
 **Critérios de aceitação**
-- [ ] O anúncio tem título, descrição, categoria, tamanho, marca, condição, preço em centavos (maior que zero) e de 1 a 5 fotos.
-- [ ] O simulador mostra preço, comissão, taxa do Pix e valor líquido em tempo real. O cálculo é o mesmo do backend.
-- [ ] O sistema sugere uma faixa de preço pela tabela da administração, e a vendedora pode ignorar a sugestão.
-- [ ] A vendedora só edita, pausa ou exclui os próprios anúncios, e nunca uma peça reservada ou vendida.
+- [x] O anúncio tem título, descrição, categoria, tamanho, marca, condição, preço em centavos (maior que zero) e de 1 a 5 fotos.
+- [x] O simulador mostra preço, comissão, taxa do Pix e valor líquido em tempo real. O cálculo é o mesmo do backend.
+- [x] O sistema sugere uma faixa de preço pela tabela da administração, e a vendedora pode ignorar a sugestão.
+- [x] A vendedora só edita, pausa ou exclui os próprios anúncios, e nunca uma peça reservada ou vendida.
 
 ---
 

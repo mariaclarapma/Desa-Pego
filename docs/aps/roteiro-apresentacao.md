@@ -111,6 +111,11 @@ e o sistema funcionando."
 
 - [ ] **Acordar o site 5 minutos antes.** O plano gratuito do Render "dorme" e pode levar até 1 minuto para abrir.
 - [ ] Deixar uma **conta de demonstração** criada e logada numa aba, e conferir que há peças disponíveis na vitrine.
+- [ ] **Nenhum merge na `main` no dia:** cada merge faz um novo deploy no Render, que apaga os anúncios e as fotos
+      criados no site (o catálogo ainda fica no disco do servidor). Se houver merge, crie o anúncio da demonstração
+      depois dele.
+- [ ] Se sobrar tempo no bloco 4: publicar um anúncio em "anunciar peça" e mostrar o simulador calculando o valor
+      líquido enquanto digita o preço (UC02).
 - [ ] **Plano B:** prints ou um vídeo curto da compra, caso a internet ou o site falhem.
 - [ ] Exportar os SVGs dos diagramas para os slides, com um diagrama por slide e zoom na parte que está sendo explicada.
 - [ ] Ensaiar com cronômetro. Se passar do tempo, o primeiro corte é o diagrama de componentes, e o segundo é a
@@ -125,4 +130,5 @@ e o sistema funcionando."
 | E se o Pix for confirmado duas vezes? | A confirmação é idempotente: a segunda chamada responde 200 e não lança o valor de novo na carteira. |
 | Por que um pedido por vendedora? | Cada vendedora envia a sua parte e recebe o seu dinheiro. Assim, "minhas vendas", a carteira e o frete ficam separados. |
 | Os diagramas mudaram em relação ao planejamento? | Sim. O planejado era NestJS na AWS, e o construído são serviços Express no Render. As duas versões estão no repositório, e explicamos a diferença no README dos diagramas. |
-| O que ainda falta? | O anúncio (Módulo 02, em desenvolvimento) e levar o catálogo para o PostgreSQL. |
+| O que ainda falta? | Guardar as fotos dos anúncios e o catálogo fora do disco do Render, que é apagado a cada deploy: Supabase Storage e PostgreSQL (PR #48, com migração) ou Amazon S3 (PR #45). |
+| Como a vendedora sabe quanto vai receber? | O simulador do anúncio usa a mesma função (`calcularRepasse`, em `core`) que o serviço de pedidos usa para lançar na carteira: o valor mostrado é o valor lançado. |
