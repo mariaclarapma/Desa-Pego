@@ -144,6 +144,28 @@ export class CompraFacade {
     });
   }
 
+  /**
+   * Grava como disponíveis as peças cuja reserva da sacola venceu (issue #010: "reserva expirada é
+   * liberada por job"). A leitura já trata reserva vencida como disponível (statusAtual); isto deixa
+   * o dado gravado de acordo. Peça de um pedido que ainda espera o Pix fica como está: quem a
+   * devolve é o cancelamento do pedido (expirarVencidos).
+   */
+  liberarReservasVencidas(): Promise<number> {
+    return this.loja.alterarEmFila(() => {
+      const agora = this.regras.agora();
+      let liberadas = 0;
+      for (const peca of this.loja.listarPecas()) {
+        if (peca.status !== "reservada" || statusAtual(peca, agora) !== "disponivel") continue;
+        if (this.pecaEmPedidoAberto(peca.id)) continue;
+        peca.status = "disponivel";
+        peca.reservadaAte = null;
+        peca.reservadaPor = null;
+        liberadas++;
+      }
+      return liberadas;
+    });
+  }
+
   /** A peça está num pedido que ainda espera o Pix (não pode ser liberada nem vendida de novo). */
   pecaEmPedidoAberto(pecaId: string): boolean {
     return this.loja.listarPedidos().some((p) => p.status === "aguardando_pagamento" && !this.vencido(p) && p.itens.some((i) => i.id === pecaId));

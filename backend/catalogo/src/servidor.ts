@@ -42,7 +42,9 @@ app.listen(porta, "127.0.0.1", () => {
   if (!gestao) console.warn("[catalogo] API_KEYS não definido: rotas /integracao e checkout desligados (503).");
 });
 
-// a cada minuto, cancela os pedidos com o Pix vencido (aqui e no Módulo 05) e devolve as peças
+// a cada minuto: cancela os pedidos com o Pix vencido (aqui e no Módulo 05), devolve as peças
+// e grava como disponíveis as reservas da sacola que venceram
 setInterval(() => {
   app.compras.expirarVencidos().catch((erro) => console.error("[catalogo] expirar pedidos:", erro));
+  app.compras.liberarReservasVencidas().catch((erro) => console.error("[catalogo] liberar reservas:", erro));
 }, 60_000).unref();
