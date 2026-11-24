@@ -6,6 +6,7 @@ import { criarAppCatalogo } from "./app.js";
 import { ArmazenamentoLocal } from "./fotos.js";
 import { gestaoPorHttp } from "./gestao.js";
 import { abrirLoja } from "./loja.js";
+import { lerReservaMinutos } from "./regras.js";
 
 const caminho = (relativo: string) => fileURLToPath(new URL(relativo, import.meta.url));
 
@@ -30,7 +31,7 @@ const app = criarAppCatalogo(loja, {
   apiKeys,
   gestao,
   trustProxy: lerTrustProxy(process.env.TRUST_PROXY),
-  reservaMinutos: 15,
+  reservaMinutos: lerReservaMinutos(process.env.RESERVA_MINUTOS),
   freteCentavos: 1990,
   jwtSegredo,
   anuncios,
