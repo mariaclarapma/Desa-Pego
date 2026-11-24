@@ -23,7 +23,7 @@ function servidorFalso({ regrasFalham = false } = {}) {
       const { arquivos } = JSON.parse(String(init?.body));
       const fotos = arquivos.map(() => {
         n++;
-        return { chave: `00000000-0000-0000-0000-00000000000${n}.png`, urlUpload: `/api/fotos/x${n}`, url: `/api/fotos/x${n}` };
+        return { chave: `00000000-0000-0000-0000-00000000000${n}.png`, urlUpload: `/api/fotos/x${n}`, metodo: "PUT", campos: {}, expiraEm: "2026-11-23T12:00:00.000Z", url: `/api/fotos/x${n}` };
       });
       return new Response(JSON.stringify({ fotos }), { status: 201 });
     }

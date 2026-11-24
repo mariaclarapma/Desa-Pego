@@ -4,11 +4,11 @@ import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { SignJWT } from "jose";
 import request from "supertest";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { ERRO_SEM_CHAVE_PIX } from "../../comum/autenticacao.js";
 import type { PerfisVendedoras } from "./anuncios.js";
 import { criarAppCatalogo } from "./app.js";
-import { ArmazenamentoLocal } from "./fotos.js";
+import { ArmazenamentoLocal, conteudoEhDoTipo, FotoInvalida, type ArmazenamentoFotos, type EnvioFoto, type TipoFoto } from "./fotos.js";
 import { abrirLoja } from "./loja.js";
 
 /* Testes do Req. 006 (anúncios) e da integração do Módulo 02 com o catálogo. */
@@ -257,5 +257,150 @@ describe("gerenciar anúncio (Req. 004)", () => {
     const ana = await conta("conta-ana");
     const anuncio = await publicar(ana);
     await request(app).post(`/pecas/${anuncio.id}/reservar`).set(ana).expect(403);
+  });
+});
+
+/**
+ * Bucket simulado com o mesmo contrato do ArmazenamentoS3: o navegador envia por POST para
+ * temporarias/ (aqui, `enviar`) e a API só publica depois de conferir tamanho e primeiros bytes.
+ */
+class BucketFalso implements ArmazenamentoFotos {
+  temporarias = new Map<string, Buffer>();
+  publicadas = new Set<string>();
+  conferidas: string[] = [];
+  removidas: string[] = [];
+  aoRemover: (chave: string) => void = () => {};
+
+  async gerarUrlUpload(chave: string, tipo: TipoFoto): Promise<EnvioFoto> {
+    return { urlUpload: "https://bucket-falso.example.test/", metodo: "POST", campos: { key: `temporarias/${chave}`, "Content-Type": tipo }, expiraEm: new Date(0).toISOString() };
+  }
+  /** O que o S3 faz ao receber o POST do navegador (a política já barra tipo e tamanho lá). */
+  enviar(chave: string, dados: Buffer) {
+    this.temporarias.set(chave, dados);
+  }
+  async confirmarEnvio(chave: string, tipo: TipoFoto, maxBytes: number) {
+    this.conferidas.push(chave);
+    const dados = this.temporarias.get(chave);
+    if (!dados || dados.length > maxBytes || !conteudoEhDoTipo(dados, tipo)) throw new FotoInvalida();
+    this.publicadas.add(chave);
+  }
+  urlPublica(chave: string) {
+    return `https://fotos.example.test/anuncios/${chave}`;
+  }
+  async remover(chave: string) {
+    this.aoRemover(chave);
+    this.removidas.push(chave);
+    this.publicadas.delete(chave);
+  }
+}
+
+describe("fotos no Amazon S3 (bucket simulado)", () => {
+  let bucket: BucketFalso;
+  let appS3: ReturnType<typeof criarAppCatalogo>;
+
+  beforeEach(() => {
+    bucket = new BucketFalso();
+    const perfisFalsos: PerfisVendedoras = { buscar: async (id) => perfis.get(id) ?? null };
+    appS3 = criarAppCatalogo(loja, {
+      origens: [ORIGEM],
+      apiKeys: [],
+      trustProxy: "loopback",
+      reservaMinutos: 15,
+      freteCentavos: 1990,
+      jwtSegredo: SEGREDO,
+      anuncios: { armazenamento: bucket, perfis: perfisFalsos, fotoMaxBytes: 1024 },
+    });
+  });
+
+  /** Pede o envio autorizado e "sobe" no bucket, como o navegador faz com o POST assinado. */
+  async function enviarAoBucket(cabecalho: Record<string, string>, arquivos: { tipo: string; dados: Buffer }[]) {
+    const pedido = await request(appS3)
+      .post("/anuncios/fotos")
+      .set(cabecalho)
+      .send({ arquivos: arquivos.map((a) => ({ tipo: a.tipo, tamanhoBytes: a.dados.length })) })
+      .expect(201);
+    return pedido.body.fotos.map((f: { chave: string; metodo: string; campos: Record<string, string>; urlUpload: string }, i: number) => {
+      expect(f).toMatchObject({ metodo: "POST", urlUpload: "https://bucket-falso.example.test/", campos: { key: `temporarias/${f.chave}` } });
+      bucket.enviar(f.chave, arquivos[i].dados);
+      return f.chave;
+    }) as string[];
+  }
+
+  it("confere tamanho e primeiros bytes antes de vincular: arquivo falso não entra no anúncio", async () => {
+    const ana = await conta("conta-ana");
+    const [falsa] = await enviarAoBucket(ana, [{ tipo: "image/png", dados: Buffer.from("isto não é imagem") }]);
+    const recusa = await request(appS3).post("/anuncios").set(ana).send(anuncioValido([falsa])).expect(400);
+    expect(recusa.body.erro).toMatch(/não é uma imagem JPG, PNG ou WebP de até/);
+    expect(bucket.publicadas.size).toBe(0);
+    expect(loja.foto(falsa)).toMatchObject({ enviadaEm: null, pecaId: null });
+
+    const [boa] = await enviarAoBucket(ana, [{ tipo: "image/png", dados: PNG }]);
+    const anuncio = (await request(appS3).post("/anuncios").set(ana).send(anuncioValido([boa])).expect(201)).body;
+    expect(anuncio.fotos).toEqual([{ chave: boa, url: `https://fotos.example.test/anuncios/${boa}` }]);
+    expect(loja.foto(boa)).toMatchObject({ pecaId: anuncio.id });
+    expect(loja.foto(boa)!.enviadaEm).not.toBeNull();
+    // a vitrine mostra a URL do bucket (ou da CDN)
+    expect((await request(appS3).get(`/pecas/${anuncio.id}`).expect(200)).body.fotoUrl).toBe(`https://fotos.example.test/anuncios/${boa}`);
+  });
+
+  it("foto que não chegou ao bucket é recusada", async () => {
+    const ana = await conta("conta-ana");
+    const pedido = await request(appS3).post("/anuncios/fotos").set(ana).send({ arquivos: [{ tipo: "image/png", tamanhoBytes: 100 }] }).expect(201);
+    const res = await request(appS3).post("/anuncios").set(ana).send(anuncioValido([pedido.body.fotos[0].chave])).expect(400);
+    expect(res.body.erro).toMatch(/não terminou de subir/);
+  });
+
+  it("só consulta o bucket depois de conferir que o envio é da vendedora", async () => {
+    const [daAna] = await enviarAoBucket(await conta("conta-ana"), [{ tipo: "image/png", dados: PNG }]);
+    await request(appS3).post("/anuncios").set(await conta("conta-bia")).send(anuncioValido([daAna])).expect(400);
+    await request(appS3).post("/anuncios").set(await conta("conta-bia")).send(anuncioValido(["1b40590a-d80d-4b07-8d1a-25bbfa043023.png"])).expect(400);
+    expect(bucket.conferidas).toEqual([]);
+  });
+
+  it("na troca, a foto antiga só sai depois que a nova é conferida e o anúncio é salvo", async () => {
+    const ana = await conta("conta-ana");
+    const [antiga] = await enviarAoBucket(ana, [{ tipo: "image/png", dados: PNG }]);
+    const anuncio = (await request(appS3).post("/anuncios").set(ana).send(anuncioValido([antiga])).expect(201)).body;
+
+    // a nova é inválida: nada muda e a antiga continua
+    const [invalida] = await enviarAoBucket(ana, [{ tipo: "image/jpeg", dados: PNG }]);
+    await request(appS3).put(`/anuncios/${anuncio.id}`).set(ana).send(anuncioValido([invalida])).expect(400);
+    expect(bucket.removidas).toEqual([]);
+    expect(loja.peca(anuncio.id)!.fotos).toEqual([{ chave: antiga, url: bucket.urlPublica(antiga) }]);
+
+    // a nova é válida: quando a antiga é apagada, o anúncio já aponta para a nova
+    const [nova] = await enviarAoBucket(ana, [{ tipo: "image/jpeg", dados: JPG }]);
+    const naHoraDeApagar: string[][] = [];
+    bucket.aoRemover = () => naHoraDeApagar.push((loja.peca(anuncio.id)!.fotos ?? []).map((f) => f.chave));
+    await request(appS3).put(`/anuncios/${anuncio.id}`).set(ana).send(anuncioValido([nova])).expect(200);
+    expect(bucket.removidas).toEqual([antiga]);
+    expect(naHoraDeApagar).toEqual([[nova]]);
+    expect(loja.foto(antiga)).toBeUndefined();
+  });
+
+  it("se apagar no bucket falhar, a edição continua salva", async () => {
+    const ana = await conta("conta-ana");
+    const anuncio = (await request(appS3).post("/anuncios").set(ana).send(anuncioValido(await enviarAoBucket(ana, [{ tipo: "image/png", dados: PNG }]))).expect(201)).body;
+    const [nova] = await enviarAoBucket(ana, [{ tipo: "image/png", dados: PNG }]);
+    bucket.aoRemover = () => {
+      throw new Error("S3 fora do ar");
+    };
+    const erroNoLog = vi.spyOn(console, "error").mockImplementation(() => {});
+    await request(appS3).put(`/anuncios/${anuncio.id}`).set(ana).send(anuncioValido([nova])).expect(200);
+    expect(loja.peca(anuncio.id)!.fotos!.map((f) => f.chave)).toEqual([nova]);
+    expect(erroNoLog).toHaveBeenCalled();
+    erroNoLog.mockRestore();
+  });
+
+  it("excluir o anúncio apaga as fotos do bucket; e /fotos não existe com o S3", async () => {
+    const ana = await conta("conta-ana");
+    const fotos = await enviarAoBucket(ana, [
+      { tipo: "image/png", dados: PNG },
+      { tipo: "image/jpeg", dados: JPG },
+    ]);
+    const anuncio = (await request(appS3).post("/anuncios").set(ana).send(anuncioValido(fotos)).expect(201)).body;
+    await request(appS3).delete(`/anuncios/${anuncio.id}`).set(ana).expect(204);
+    expect(bucket.removidas.sort()).toEqual([...fotos].sort());
+    await request(appS3).put(`/fotos/${fotos[0]}`).set("Content-Type", "image/png").send(PNG).expect(404);
   });
 });

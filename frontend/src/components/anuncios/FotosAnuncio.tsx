@@ -60,7 +60,7 @@ export function FotosAnuncio({
       const preparadas = await chamar((token) => anuncios.prepararFotos(token, aceitos.map((a) => ({ tipo: a.type as TipoFoto, tamanhoBytes: a.size }))));
       await Promise.all(
         preparadas.map((p, i) =>
-          subirFoto(p.urlUpload, aceitos[i])
+          subirFoto(p, aceitos[i])
             .then(() => atualizar(locais[i].id, { chave: p.chave, estado: "pronta" }))
             .catch((falha: Error) => {
               atualizar(locais[i].id, { estado: "erro" });

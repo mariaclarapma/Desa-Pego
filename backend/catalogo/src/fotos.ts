@@ -1,32 +1,47 @@
 import { createHmac, randomUUID, timingSafeEqual } from "node:crypto";
-import { existsSync, mkdirSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, openSync, readSync, closeSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 
 /**
  * Fotos dos anúncios (Req. 004): o navegador sobe cada foto direto no armazenamento por uma URL
- * pré-assinada, sem passar pela rota do anúncio. A arquitetura prevê o Amazon S3; o grupo ainda não
- * escolheu entre S3 e Supabase Storage. Por isso o armazenamento fica atrás desta interface, e por
- * enquanto só existe a versão local (pasta no servidor), para desenvolvimento e testes.
- *
- * ATENÇÃO: no Render (plano grátis) o disco é apagado a cada deploy. Em produção é preciso um
- * adaptador de S3 ou Supabase Storage com a mesma interface.
+ * pré-assinada, sem passar pela rota do anúncio. Há dois adaptadores com a mesma interface:
+ * - ArmazenamentoS3 (fotos-s3.ts): produção, Amazon S3 com POST pré-assinado;
+ * - ArmazenamentoLocal (aqui): desenvolvimento e testes, numa pasta do servidor. No Render (plano
+ *   grátis) essa pasta é apagada a cada deploy, por isso ele não serve para produção.
  */
 export const TIPOS_FOTO = ["image/jpeg", "image/png", "image/webp"] as const;
 export type TipoFoto = (typeof TIPOS_FOTO)[number];
 export const FOTOS_MIN = 1;
 export const FOTOS_MAX = 5;
 
+/** Como o navegador envia a foto: PUT com o arquivo no corpo, ou POST de formulário com os campos assinados. */
+export interface EnvioFoto {
+  urlUpload: string;
+  metodo: "PUT" | "POST";
+  /** Campos assinados que vão no formulário antes do arquivo (só no POST). */
+  campos: Record<string, string>;
+  expiraEm: string;
+}
+
 export interface ArmazenamentoFotos {
-  /** URL (assinada, com prazo) para o navegador enviar a foto com PUT. */
-  gerarUrlUpload(chave: string, tipo: TipoFoto, maxBytes: number): { urlUpload: string; expiraEm: string };
-  /** Confere a assinatura e o prazo de um envio. Devolve o tipo e o limite assinados, ou null. */
-  validarEnvio(chave: string, parametros: Record<string, unknown>): { tipo: TipoFoto; max: number } | null;
-  gravar(chave: string, dados: Buffer): void;
-  /** Caminho do arquivo no disco (só o armazenamento local serve o arquivo pela API). */
-  caminho(chave: string): string;
+  /** URL pré-assinada (com prazo, tipo fixo e limite de tamanho) para o navegador enviar a foto. */
+  gerarUrlUpload(chave: string, tipo: TipoFoto, maxBytes: number): Promise<EnvioFoto>;
+  /**
+   * Confere a foto que chegou (existe, tamanho dentro do limite e primeiros bytes do tipo declarado)
+   * e a deixa pronta para aparecer no anúncio. Lança FotoInvalida se algo não confere.
+   * Chame só depois de conferir que a foto é da vendedora.
+   */
+  confirmarEnvio(chave: string, tipo: TipoFoto, maxBytes: number): Promise<void>;
+  /** Endereço público da foto já confirmada. */
   urlPublica(chave: string): string;
-  existe(chave: string): boolean;
-  remover(chave: string): void;
+  remover(chave: string): Promise<void>;
+}
+
+/** A foto não chegou ao armazenamento ou não respeita o tipo e o tamanho. */
+export class FotoInvalida extends Error {
+  constructor(mensagem = "a foto não foi enviada ou tem tamanho ou formato inválido.") {
+    super(mensagem);
+  }
 }
 
 const EXTENSAO: Record<TipoFoto, string> = { "image/jpeg": "jpg", "image/png": "png", "image/webp": "webp" };
@@ -41,7 +56,10 @@ export function conteudoEhDoTipo(dados: Buffer, tipo: TipoFoto): boolean {
   return dados.subarray(0, 4).toString("ascii") === "RIFF" && dados.subarray(8, 12).toString("ascii") === "WEBP";
 }
 
-/** Armazenamento numa pasta local, com URL assinada por HMAC e válida por 10 minutos. */
+/**
+ * Armazenamento numa pasta local, com URL assinada por HMAC e válida por 10 minutos. O arquivo chega
+ * pela própria API (PUT /fotos/:chave, ver rotasFotos), que confere tipo, tamanho e primeiros bytes.
+ */
 export class ArmazenamentoLocal implements ArmazenamentoFotos {
   constructor(
     private pasta: string,
@@ -57,12 +75,13 @@ export class ArmazenamentoLocal implements ArmazenamentoFotos {
     return createHmac("sha256", this.segredo).update(`${chave}|${tipo}|${max}|${exp}`).digest("base64url");
   }
 
-  gerarUrlUpload(chave: string, tipo: TipoFoto, maxBytes: number) {
+  async gerarUrlUpload(chave: string, tipo: TipoFoto, maxBytes: number): Promise<EnvioFoto> {
     const exp = this.agora() + 10 * 60_000;
     const params = new URLSearchParams({ tipo, max: String(maxBytes), exp: String(exp), sig: this.assinar(chave, tipo, maxBytes, exp) });
-    return { urlUpload: `${this.prefixoPublico}/${chave}?${params}`, expiraEm: new Date(exp).toISOString() };
+    return { urlUpload: `${this.prefixoPublico}/${chave}?${params}`, metodo: "PUT", campos: {}, expiraEm: new Date(exp).toISOString() };
   }
 
+  /** Confere a assinatura e o prazo de um envio. Devolve o tipo e o limite assinados, ou null. */
   validarEnvio(chave: string, q: Record<string, unknown>) {
     const { tipo, max, exp, sig } = q;
     if (![tipo, max, exp, sig].every((v) => typeof v === "string") || !tipoAceito(tipo)) return null;
@@ -77,8 +96,23 @@ export class ArmazenamentoLocal implements ArmazenamentoFotos {
     writeFileSync(join(this.pasta, chave), dados);
   }
 
+  /** Caminho do arquivo no disco (o armazenamento local serve a foto pela API). */
   caminho(chave: string) {
     return resolve(this.pasta, chave);
+  }
+
+  async confirmarEnvio(chave: string, tipo: TipoFoto, maxBytes: number) {
+    if (!this.existe(chave)) throw new FotoInvalida();
+    const arquivo = join(this.pasta, chave);
+    const tamanho = statSync(arquivo).size;
+    const inicio = Buffer.alloc(12);
+    const fd = openSync(arquivo, "r");
+    try {
+      readSync(fd, inicio, 0, 12, 0);
+    } finally {
+      closeSync(fd);
+    }
+    if (tamanho < 1 || tamanho > maxBytes || !conteudoEhDoTipo(inicio, tipo)) throw new FotoInvalida();
   }
 
   urlPublica(chave: string) {
@@ -89,7 +123,7 @@ export class ArmazenamentoLocal implements ArmazenamentoFotos {
     return CHAVE_FOTO.test(chave) && existsSync(join(this.pasta, chave));
   }
 
-  remover(chave: string) {
+  async remover(chave: string) {
     if (CHAVE_FOTO.test(chave)) rmSync(join(this.pasta, chave), { force: true });
   }
 }

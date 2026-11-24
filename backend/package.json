@@ -28,6 +28,8 @@
     "vitest": "^3.2.7"
   },
   "dependencies": {
+    "@aws-sdk/client-s3": "^3.1175.0",
+    "@aws-sdk/s3-presigned-post": "^3.1175.0",
     "@desapego/core": "*",
     "@node-rs/argon2": "^2.2.2",
     "cookie-parser": "^1.4.7",

@@ -52,3 +52,16 @@ services:
         sync: false
       - key: ADMIN_MASTER_PASSWORD
         sync: false
+      # fotos dos anúncios no Amazon S3 (Req. 004): bucket, região, usuário IAM com as permissões
+      # mínimas e, se houver, a CDN. Preencha no painel; veja docs/FOTOS.md. Sem S3_BUCKET, o catálogo
+      # usa uma pasta local, que o Render apaga a cada deploy.
+      - key: S3_BUCKET
+        sync: false
+      - key: AWS_REGION
+        sync: false
+      - key: AWS_ACCESS_KEY_ID
+        sync: false
+      - key: AWS_SECRET_ACCESS_KEY
+        sync: false
+      - key: S3_URL_PUBLICA
+        sync: false
