@@ -126,8 +126,19 @@ async function destinoLivre(db: BancoCatalogo, schema: string, semente: Dados) {
   );
   if (!existe) return true;
   const pecas = (await db.query<{ dados: Peca }>(`SELECT dados FROM ${schema}.pecas ORDER BY ordem`)).rows.map((r) => r.dados);
+  const config = (await db.query<{ dados: unknown }>(`SELECT dados FROM ${schema}.configuracao WHERE id = 1`)).rows[0]?.dados ?? {};
   const outros = await db.query<{ n: number }>(`SELECT (SELECT count(*) FROM ${schema}.pedidos) + (SELECT count(*) FROM ${schema}.fotos) AS n`);
-  return Number(outros.rows[0].n) === 0 && JSON.stringify(pecas) === JSON.stringify(semente.pecas);
+  // o JSONB do Postgres não guarda a ordem das chaves: compara sem depender dela
+  return Number(outros.rows[0].n) === 0 && jsonCanonico(config) === "{}" && jsonCanonico(pecas) === jsonCanonico(semente.pecas);
+}
+
+/** JSON com as chaves dos objetos em ordem alfabética (a ordem dos itens das listas continua valendo). */
+export function jsonCanonico(valor: unknown): string {
+  return JSON.stringify(valor, (_chave, v: unknown) =>
+    v && typeof v === "object" && !Array.isArray(v)
+      ? Object.fromEntries(Object.entries(v as Record<string, unknown>).sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0)))
+      : v,
+  );
 }
 
 /**

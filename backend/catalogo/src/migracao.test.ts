@@ -15,7 +15,7 @@ import { criarAppCatalogo } from "./app.js";
 import { ArmazenamentoLocal } from "./fotos.js";
 import { ArmazenamentoSupabase, BUCKET_ENVIOS, BUCKET_FOTOS } from "./fotos-supabase.js";
 import { abrirLoja, abrirLojaBanco, type BancoCatalogo, type Dados } from "./loja.js";
-import { aplicarMigracao, exportarCatalogo, planejarMigracao } from "./migracao.js";
+import { aplicarMigracao, exportarCatalogo, jsonCanonico, planejarMigracao } from "./migracao.js";
 import { StorageSimulado } from "./storage-simulado.js";
 
 /*
@@ -237,6 +237,40 @@ describe("migração: exportar da produção, conferir e aplicar", () => {
     const plano = planejarMigracao({ pecas: producao.listarPecas(), pedidos: producao.listarPedidos(), configuracao: producao.configuracao() }, semente(), AGORA);
     await aplicarMigracao({ db, schema, semente: SEMENTE, plano, armazenamento: armazenamento(), lerFoto: lerDaPasta });
     await expect(aplicarMigracao({ db, schema, semente: SEMENTE, plano, armazenamento: armazenamento(), lerFoto: lerDaPasta })).rejects.toThrow(/já tem dados/);
+  });
+
+  it("semente com as chaves em outra ordem (como o JSONB do Postgres devolve) conta como intocada", async () => {
+    await abrirLojaBanco(db, SEMENTE, schema);
+    // reescreve cada peça com as chaves invertidas, como um Postgres real pode devolver
+    const linhas = await db.query<{ id: string; dados: Record<string, unknown> }>(`SELECT id, dados FROM ${schema}.pecas`);
+    for (const { id, dados } of linhas.rows) {
+      const invertido = Object.fromEntries(Object.entries(dados).reverse());
+      expect(JSON.stringify(invertido)).not.toBe(JSON.stringify(dados));
+      await db.query(`UPDATE ${schema}.pecas SET dados = $1::jsonb WHERE id = $2`, [JSON.stringify(invertido), id]);
+    }
+    const plano = planejarMigracao(comoDbJson(), semente(), AGORA);
+    await expect(aplicarMigracao({ db, schema, semente: SEMENTE, plano, armazenamento: armazenamento(), lerFoto: lerDaPasta })).resolves.toMatchObject({ fotos: 2 });
+  });
+
+  it.each([
+    ["um campo a mais numa peça da semente", async () => {
+      const [{ id, dados }] = (await db.query<{ id: string; dados: Record<string, unknown> }>(`SELECT id, dados FROM ${schema}.pecas ORDER BY ordem LIMIT 1`)).rows;
+      await db.query(`UPDATE ${schema}.pecas SET dados = $1::jsonb WHERE id = $2`, [JSON.stringify({ ...dados, pausada: true }), id]);
+    }],
+    ["frete alterado no painel", async () => {
+      await db.query(`UPDATE ${schema}.configuracao SET dados = $1::jsonb WHERE id = 1`, [JSON.stringify({ freteCentavos: 2490 })]);
+    }],
+  ])("continua bloqueando catálogo com dados extras: %s", async (_caso, mexer) => {
+    await abrirLojaBanco(db, SEMENTE, schema);
+    await mexer();
+    const plano = planejarMigracao(comoDbJson(), semente(), AGORA);
+    await expect(aplicarMigracao({ db, schema, semente: SEMENTE, plano, armazenamento: armazenamento(), lerFoto: lerDaPasta })).rejects.toThrow(/já tem dados além da semente/);
+    expect(storage.objetos.size).toBe(0);
+  });
+
+  it("jsonCanonico ignora a ordem das chaves, mas não a dos itens", () => {
+    expect(jsonCanonico({ b: 1, a: { d: [2, 1], c: null } })).toBe(jsonCanonico({ a: { c: null, d: [2, 1] }, b: 1 }));
+    expect(jsonCanonico([{ a: 1 }, { b: 2 }])).not.toBe(jsonCanonico([{ b: 2 }, { a: 1 }]));
   });
 
   it("foto faltando ou falsa: para antes de gravar qualquer coisa", async () => {
