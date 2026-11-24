@@ -42,12 +42,12 @@ describe("autenticação", () => {
 
       cy.findCampo("e-mail").type(email);
       cy.findCampo("senha").type("senhaErrada9");
-      cy.contains("button[type=submit]", /^entrar$/).click();
+      cy.contains("button[type=submit]", /^entrar na minha conta$/).click();
       // não revela se o e-mail existe
       cy.get("[role=alert]").should("contain.text", "e-mail ou senha incorretos");
 
       cy.findCampo("senha").clear().type("garimpo123");
-      cy.contains("button[type=submit]", /^entrar$/).click();
+      cy.contains("button[type=submit]", /^entrar na minha conta$/).click();
       cy.location("pathname").should("eq", "/conta");
     });
   });

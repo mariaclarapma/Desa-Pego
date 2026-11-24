@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, type InputHTMLAttributes } from "react";
+import { useState, type InputHTMLAttributes, type ReactNode } from "react";
 import { IconAlerta, IconOlho, IconOlhoRiscado } from "@/components/ui/icons";
 
 type Props = Omit<InputHTMLAttributes<HTMLInputElement>, "id"> & {
@@ -10,13 +10,17 @@ type Props = Omit<InputHTMLAttributes<HTMLInputElement>, "id"> & {
   dica?: string;
   /** Campo de senha com o botão de mostrar/ocultar. */
   senha?: boolean;
+  /** Ícone decorativo à esquerda do texto (ex.: envelope no e-mail). */
+  icone?: ReactNode;
+  /** "editorial": borda fina e realce suave no foco (login e cadastro). O padrão é o contorno grosso. */
+  estilo?: "padrao" | "editorial";
 };
 
 /**
  * Campo com rótulo visível, dica e mensagem de erro ligadas ao input por aria-describedby.
  * O erro aparece em texto e com ícone (nunca só pela cor).
  */
-export function CampoConta({ id, rotulo, erro, dica, senha = false, className = "", ...input }: Props) {
+export function CampoConta({ id, rotulo, erro, dica, senha = false, icone, estilo = "padrao", className = "", ...input }: Props) {
   const [visivel, setVisivel] = useState(false);
   const idDica = dica ? `${id}-dica` : undefined;
   const idErro = erro ? `${id}-erro` : undefined;
@@ -33,14 +37,27 @@ export function CampoConta({ id, rotulo, erro, dica, senha = false, className = 
           type={senha ? (visivel ? "text" : "password") : input.type}
           aria-invalid={erro ? true : undefined}
           aria-describedby={[idErro, idDica].filter(Boolean).join(" ") || undefined}
-          className={`h-12 w-full rounded-2xl border-2 bg-white/70 px-4 text-roxo transition-[background-color,box-shadow,border-color] placeholder:text-roxo-soft/80 hover:bg-white focus:bg-white focus:outline-none ${
+          className={`w-full text-roxo transition-[background-color,box-shadow,border-color] placeholder:text-roxo-soft/80 focus:outline-none ${
             senha ? "pr-14" : ""
-          } ${
-            erro
-              ? "border-magenta focus:shadow-[3px_3px_0_0_var(--color-magenta)]"
-              : "border-roxo focus:shadow-[3px_3px_0_0_var(--color-rosa)]"
+          } ${icone ? "pl-12" : "pl-4"} ${senha ? "" : "pr-4"} ${
+            estilo === "editorial"
+              ? `h-13 rounded-2xl border-[1.5px] bg-white ${
+                  erro
+                    ? "border-magenta focus:shadow-[0_0_0_4px_color-mix(in_srgb,var(--color-magenta)_22%,transparent)]"
+                    : "border-roxo-soft/70 hover:border-roxo-soft focus:border-violeta focus:shadow-[0_0_0_4px_color-mix(in_srgb,var(--color-lilas)_55%,transparent)]"
+                }`
+              : `h-12 rounded-2xl border-2 bg-white/70 hover:bg-white focus:bg-white ${
+                  erro
+                    ? "border-magenta focus:shadow-[3px_3px_0_0_var(--color-magenta)]"
+                    : "border-roxo focus:shadow-[3px_3px_0_0_var(--color-rosa)]"
+                }`
           }`}
         />
+        {icone ? (
+          <span aria-hidden="true" className="pointer-events-none absolute top-1/2 left-4 -translate-y-1/2 text-roxo-soft">
+            {icone}
+          </span>
+        ) : null}
         {senha ? (
           <button
             type="button"

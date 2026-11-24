@@ -123,6 +123,35 @@
   --color-lilas: #cbb4f2;
 }
 
+/*
+ * Ilustração da arara (login e cadastro). É decorativa (aria-hidden) e funciona como uma foto:
+ * mantém as mesmas cores nos três temas, por isso as cores ficam aqui e não nos tokens de tema.
+ */
+.arte-arara {
+  --arara-metal: #a881b9;
+  --arara-metal-escuro: #705280;
+  --arara-madeira: #c8adcf;
+  --arara-ameixa: #552065;
+  --arara-ameixa-escuro: #4f1a5a;
+  --arara-ameixa-claro: #9a4aa3;
+  --arara-roxo: #773da3;
+  --arara-roxo-escuro: #6c3388;
+  --arara-lilas: #c4a3ec;
+  --arara-lilas-escuro: #a784c8;
+  --arara-lavanda: #ad8ed6;
+  --arara-lavanda-claro: #e2d0f1;
+  --arara-creme: #f8f4ed;
+  --arara-creme-escuro: #ded2e4;
+  --arara-offwhite: #fffaf4;
+  --arara-dourado: #d4a95c;
+  --arara-sombra: #4a1259;
+  --arara-flor-1: #c8a2e6;
+  --arara-flor-2: #a983d2;
+  --arara-flor-3: #e6d3f5;
+  --arara-vidro: #f6effb;
+  --arara-folha: #8fa585;
+}
+
 /* no alto contraste, links ficam sempre sublinhados */
 [data-tema="alto-contraste"] a:not([class*="rounded-full"]) {
   text-decoration: underline;
