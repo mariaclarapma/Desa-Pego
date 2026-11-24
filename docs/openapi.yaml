@@ -275,9 +275,13 @@ components:
       type: object
       properties:
         chave: { type: string, examples: ["1b0e…-…-….png"] }
-        urlUpload: { type: string, description: "URL pré-assinada (10 min) para o PUT da foto" }
+        urlUpload:
+          type: string
+          description: "URL pré-assinada para o PUT da foto: na API local (/fotos/{chave}, 10 min) ou no Supabase Storage (2 h, sem sobrescrever)."
+        metodo: { type: string, enum: [PUT], description: "sempre PUT, com o arquivo no corpo e o Content-Type do arquivo" }
+        campos: { type: object, additionalProperties: { type: string }, description: "vazio (reservado para outros armazenamentos)" }
         expiraEm: { type: string, format: date-time }
-        url: { type: string, description: endereço público da foto depois de enviada }
+        url: { type: string, description: "endereço público da foto depois de publicada no anúncio" }
     Erro:
       type: object
       required: [erro]
@@ -973,7 +977,7 @@ paths:
     put:
       tags: [anuncios]
       summary: Envia o arquivo pela URL pré-assinada (a assinatura da URL autoriza; sem token)
-      description: O servidor confere a assinatura, o prazo, o Content-Type e os primeiros bytes do arquivo.
+      description: "Só com o armazenamento local (desenvolvimento). O servidor confere a assinatura, o prazo, o Content-Type e os primeiros bytes do arquivo. Com o Supabase Storage, o navegador envia direto ao bucket e a API confere ao publicar."
       parameters:
         - { name: chave, in: path, required: true, schema: { type: string } }
         - { name: sig, in: query, required: true, schema: { type: string } }

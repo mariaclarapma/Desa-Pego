@@ -80,7 +80,10 @@ export const anuncios = {
     chamarComToken<{ fotos: FotoPreparada[] }>(token, "POST", "/anuncios/fotos", { arquivos }).then((r) => r.fotos),
 };
 
-/** Sobe o arquivo pela URL pré-assinada (não leva o token: a assinatura da URL autoriza). */
+/**
+ * Sobe o arquivo pela URL pré-assinada com PUT (não leva o token: a assinatura da URL autoriza).
+ * Serve para a API local e para o Supabase Storage, que recebe o arquivo direto do navegador.
+ */
 export async function subirFoto(urlUpload: string, arquivo: File): Promise<void> {
   let resposta: Response;
   try {
@@ -89,8 +92,9 @@ export async function subirFoto(urlUpload: string, arquivo: File): Promise<void>
     throw new ErroApi(0, "não deu para enviar a foto. verifique sua conexão.");
   }
   if (!resposta.ok) {
+    // a API local responde { erro }; o Supabase Storage, { message } em inglês (não mostramos)
     const dados = await resposta.json().catch(() => null);
-    throw new ErroApi(resposta.status, dados?.erro ?? "não deu para enviar a foto.");
+    throw new ErroApi(resposta.status, dados?.erro ?? "não deu para enviar a foto. confira se é JPG, PNG ou WebP de até 5 MB.");
   }
 }
 

@@ -23,6 +23,8 @@ backend/db.json
 
 # fotos dos anúncios gravadas localmente (Módulo 02); em produção vão para S3 ou Supabase Storage
 backend/fotos/
+# exportação do catálogo para a migração (tem dados pessoais dos pedidos): nunca no Git
+exportacao-catalogo*/
 
 # banco do serviço de contas: tem hashes de senha e sessões, nunca vai para o Git
 backend/contas/dados/
