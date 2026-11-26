@@ -210,8 +210,15 @@ components:
         tamanho: { type: string, examples: [M, único, "37"] }
         condicao: { type: string, enum: [nova_com_etiqueta, otimo_estado, bom_estado, com_marcas_de_uso] }
         precoCentavos: { type: integer }
-        fotoUrl: { type: string, format: uri }
+        fotoUrl: { type: string, format: uri, description: foto principal (a da vitrine e da sacola) }
         fotoAlt: { type: string }
+        fotos:
+          type: array
+          minItems: 1
+          items: { $ref: "#/components/schemas/FotoPeca" }
+          description: |
+            Galeria da página da peça (Req. 008), na ordem: a primeira é a capa. Peça sem galeria
+            devolve a foto principal como única foto. Nunca traz a chave interna do armazenamento.
         vendedor: { type: object, properties: { nomePublico: { type: string }, cidade: { type: string } } }
         vendedoraId:
           type: string
@@ -224,6 +231,14 @@ components:
           description: reserva vencida já volta como `disponivel`
         reservadaAte: { type: [string, "null"], format: date-time }
         criadoEm: { type: string, format: date-time }
+    FotoPeca:
+      type: object
+      required: [url, alt]
+      properties:
+        url: { type: string, examples: ["https://images.unsplash.com/photo-1551028719-00167b16eac5", /api/fotos/a1b2c3.jpg] }
+        alt:
+          type: string
+          description: texto alternativo para leitor de tela. Foto de anúncio sem descrição ganha uma a partir do título.
     PaginaVitrine:
       type: object
       required: [itens, total, pagina, porPagina]
@@ -275,9 +290,13 @@ components:
       type: object
       properties:
         chave: { type: string, examples: ["1b0e…-…-….png"] }
-        urlUpload: { type: string, description: "URL pré-assinada (10 min) para o PUT da foto" }
+        urlUpload:
+          type: string
+          description: "URL pré-assinada para o PUT da foto: na API local (/fotos/{chave}, 10 min) ou no Supabase Storage (2 h, sem sobrescrever)."
+        metodo: { type: string, enum: [PUT], description: "sempre PUT, com o arquivo no corpo e o Content-Type do arquivo" }
+        campos: { type: object, additionalProperties: { type: string }, description: "vazio (reservado para outros armazenamentos)" }
         expiraEm: { type: string, format: date-time }
-        url: { type: string, description: endereço público da foto depois de enviada }
+        url: { type: string, description: "endereço público da foto depois de publicada no anúncio" }
     Erro:
       type: object
       required: [erro]
@@ -807,6 +826,41 @@ paths:
             application/json:
               schema: { $ref: "#/components/schemas/Erro" }
               example: { erro: confira os dados enviados., campos: { precoMin: o preço mínimo não pode ser maior que o máximo. } }
+  /pecas/{id}:
+    get:
+      tags: [vitrine]
+      summary: Página de detalhes da peça (catálogo). Sem login.
+      description: |
+        Req. 008. O `status` é calculado a cada chamada, a partir do banco (reserva vencida já volta
+        como `disponivel`): o site usa esse valor para desabilitar a compra de peça reservada ou vendida.
+        Peça vendida continua acessível (o link não quebra). Peça ocultada pela administração ou
+        pausada pela vendedora responde **404**, como se não existisse.
+      security: []
+      parameters: [{ $ref: "#/components/parameters/id" }]
+      responses:
+        "200":
+          description: a peça, com a galeria de fotos
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/Peca" }
+              example:
+                id: demo-jaqueta-couro
+                titulo: Jaqueta de couro preta
+                categoria: feminino
+                tamanho: M
+                condicao: otimo_estado
+                precoCentavos: 18990
+                fotoUrl: "https://images.unsplash.com/photo-1551028719-00167b16eac5"
+                fotoAlt: Jaqueta de couro preta com zíperes num cabide sobre lençol branco
+                fotos:
+                  - { url: "https://images.unsplash.com/photo-1551028719-00167b16eac5", alt: Jaqueta de couro preta com zíperes num cabide sobre lençol branco }
+                  - { url: "https://images.unsplash.com/photo-1551028719-00167b16eac5?fp-x=0.3", alt: Detalhe dos zíperes prateados dos bolsos da jaqueta de couro preta }
+                vendedor: { nomePublico: Bia, cidade: "Brasília, DF" }
+                status: disponivel
+                reservadaAte: null
+                criadoEm: "2026-11-14T12:00:00.000Z"
+        "400": { description: id malformado, content: { application/json: { schema: { $ref: "#/components/schemas/Erro" } } } }
+        "404": { description: "a peça não existe, foi ocultada pela administração ou pausada pela vendedora", content: { application/json: { schema: { $ref: "#/components/schemas/Erro" } } } }
   /pecas/{id}/reservar:
     post:
       tags: [vitrine]
@@ -973,7 +1027,7 @@ paths:
     put:
       tags: [anuncios]
       summary: Envia o arquivo pela URL pré-assinada (a assinatura da URL autoriza; sem token)
-      description: O servidor confere a assinatura, o prazo, o Content-Type e os primeiros bytes do arquivo.
+      description: "Só com o armazenamento local (desenvolvimento). O servidor confere a assinatura, o prazo, o Content-Type e os primeiros bytes do arquivo. Com o Supabase Storage, o navegador envia direto ao bucket e a API confere ao publicar."
       parameters:
         - { name: chave, in: path, required: true, schema: { type: string } }
         - { name: sig, in: query, required: true, schema: { type: string } }

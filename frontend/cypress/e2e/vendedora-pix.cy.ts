@@ -51,7 +51,7 @@ describe("perfil de vendedora e chave Pix", () => {
       cy.location("pathname").should("eq", "/entrar");
       cy.findCampo("e-mail").type(email);
       cy.findCampo("senha").type("garimpo123");
-      cy.contains("button[type=submit]", /^entrar$/).click();
+      cy.contains("button[type=submit]", /^entrar na minha conta$/).click();
       cy.location("pathname").should("eq", "/conta");
       cy.visit("/conta/vendedora");
       cy.contains("dd", "Brechó Cypress");

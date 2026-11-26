@@ -7,7 +7,7 @@ const entrarComoAdmin = () => {
   cy.visit("/entrar");
   cy.findCampo("e-mail").type(Cypress.env("ADMIN_EMAIL"));
   cy.findCampo("senha").type(Cypress.env("ADMIN_SENHA"), { log: false });
-  cy.contains("button[type=submit]", /^entrar$/).click();
+  cy.contains("button[type=submit]", /^entrar na minha conta$/).click();
   cy.location("pathname").should("eq", "/conta");
 };
 

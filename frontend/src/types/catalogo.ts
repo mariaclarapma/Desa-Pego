@@ -40,8 +40,16 @@ export interface PecaResumo {
 /** Situação de uma peça única no estoque (ver ADR-003 do documento de arquitetura). */
 export type StatusPeca = "disponivel" | "reservada" | "vendida";
 
+/** Uma foto da galeria da peça (Req. 008). `alt` descreve a foto para leitor de tela. */
+export interface FotoPeca {
+  url: string;
+  alt: string;
+}
+
 /** Peça completa, como vem da API (json-server em desenvolvimento). */
 export interface Peca extends PecaResumo {
+  /** Galeria, na ordem (a primeira é a capa). A API sempre manda ao menos a foto principal. */
+  fotos?: FotoPeca[];
   descricao: string;
   /** Medidas em centímetros, por exemplo { busto: 92, comprimento: 64 }. */
   medidas: Record<string, number>;

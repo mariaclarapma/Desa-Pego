@@ -5,12 +5,13 @@ import { exigirAdminMaster, exigirLogin, type Autenticada } from "../../comum/au
 import { categoriaPermitida, CONDICOES } from "../../comum/categorias.js";
 import { cors, exigirApiKey, limiteRequisicoes } from "../../comum/seguranca.js";
 import { rotasAnuncios, rotasFotos, type ConfigAnuncios } from "./anuncios.js";
+import { ArmazenamentoLocal } from "./fotos.js";
 import { CompraFacade } from "./compra-facade.js";
 import type { GestaoPedidos } from "./gestao.js";
 import type { Loja, Peca } from "./loja.js";
-import { Recusa, statusAtual } from "./regras.js";
+import { fotosDaPeca, Recusa, statusAtual } from "./regras.js";
 
-export { statusAtual } from "./regras.js";
+export { fotosDaPeca, statusAtual } from "./regras.js";
 
 export interface ConfigCatalogo {
   origens: string[];
@@ -111,8 +112,12 @@ export function criarAppCatalogo(loja: Loja, config: ConfigCatalogo, agora: () =
     if (!peca || peca.oculta || peca.pausada) throw new Recusa(404, "essa peça não existe mais.");
     return peca;
   };
-  // quem reservou nunca aparece para o público
-  const pecaPublica = ({ oculta: _oculta, motivoOculta: _motivo, reservadaPor: _por, pausada: _pausada, ...p }: Peca) => ({ ...p, status: statusAtual(p, agora()) });
+  // quem reservou nunca aparece para o público; a galeria sai sem as chaves do armazenamento
+  const pecaPublica = ({ oculta: _oculta, motivoOculta: _motivo, reservadaPor: _por, pausada: _pausada, ...p }: Peca) => ({
+    ...p,
+    status: statusAtual(p, agora()),
+    fotos: fotosDaPeca(p),
+  });
   /** Frete fixo: o que a administração definiu no painel ou, se nada, o padrão do servidor. */
   const freteAtual = () => loja.configuracao().freteCentavos ?? config.freteCentavos;
   const compras = new CompraFacade(loja, config.gestao ?? null, { frete: freteAtual, agora });
@@ -249,7 +254,9 @@ export function criarAppCatalogo(loja: Loja, config: ConfigCatalogo, agora: () =
         escrita,
       }),
     );
-    app.use("/fotos", rotasFotos(loja, config.anuncios, agora));
+    // só o armazenamento local recebe e serve as fotos pela API; no Supabase é o próprio bucket
+    const { armazenamento, fotoMaxBytes } = config.anuncios;
+    if (armazenamento instanceof ArmazenamentoLocal) app.use("/fotos", rotasFotos(loja, armazenamento, fotoMaxBytes, agora));
   }
 
   // ---- painel do admin (Módulo 05): anúncios. Só a administradora master. ----

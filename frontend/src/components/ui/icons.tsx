@@ -226,3 +226,18 @@ export const IconParar = (p: IconProps) => (
     <rect x="6" y="6" width="12" height="12" rx="2" />
   </Base>
 );
+
+export const IconEnvelope = (p: IconProps) => (
+  <Base {...p}>
+    <rect x="3" y="5.5" width="18" height="13" rx="2.5" />
+    <path d="m4 7.5 8 6 8-6" />
+  </Base>
+);
+
+export const IconCadeado = (p: IconProps) => (
+  <Base {...p}>
+    <rect x="5" y="10.5" width="14" height="10" rx="2.5" />
+    <path d="M8 10.5V8a4 4 0 1 1 8 0v2.5" />
+    <path d="M12 14.5v2" />
+  </Base>
+);

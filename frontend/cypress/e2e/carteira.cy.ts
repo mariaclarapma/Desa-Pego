@@ -58,7 +58,7 @@ describe("carteira da vendedora (Req. 014)", () => {
           cy.visit("/entrar");
           cy.findCampo("e-mail").type(vendedora.email);
           cy.findCampo("senha").type(SENHA);
-          cy.contains("button[type=submit]", /^entrar$/).click();
+          cy.contains("button[type=submit]", /^entrar na minha conta$/).click();
           cy.location("pathname").should("eq", "/conta");
           cy.get("main").contains("a", "minha carteira").click();
           cy.location("pathname").should("eq", "/conta/carteira");

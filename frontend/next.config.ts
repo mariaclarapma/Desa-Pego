@@ -11,10 +11,27 @@ try {
 const producao = process.env.NODE_ENV === "production";
 
 /**
+ * Fotos dos anúncios no Supabase Storage: lê SUPABASE_URL no build e libera só esse endereço (envio
+ * direto do navegador e leitura das fotos publicadas). Sem a variável, nada é liberado.
+ * O nome é conferido para não deixar entrar nada estranho na CSP.
+ */
+function enderecoSupabase(): URL | null {
+  const valor = process.env.SUPABASE_URL?.trim();
+  if (!valor) return null;
+  const url = new URL(valor);
+  if (url.protocol !== "https:" || !/^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)+$/.test(url.hostname)) {
+    throw new Error("SUPABASE_URL precisa ser um endereço HTTPS válido (ex.: https://<projeto>.supabase.co).");
+  }
+  return url;
+}
+const supabase = enderecoSupabase();
+
+/**
  * Content Security Policy: de onde a página pode carregar cada tipo de recurso.
  * - VLibras (tradutor de Libras do governo federal) carrega script, estilo, imagens e um
  *   módulo WebAssembly de vlibras.gov.br.
  * - ViaCEP preenche o endereço no checkout; fotos de demonstração vêm do Unsplash.
+ * - Supabase Storage (se configurado): o navegador envia as fotos (connect-src) e lê as publicadas.
  * - 'unsafe-inline' em script/estilo: o Next.js injeta scripts e estilos inline na página
  *   (usar nonce exigiria renderizar tudo dinamicamente). Em desenvolvimento, o recarregamento
  *   automático precisa de 'unsafe-eval' e de WebSocket.
@@ -24,9 +41,9 @@ const csp = [
   "default-src 'self'",
   `script-src 'self' 'unsafe-inline' 'wasm-unsafe-eval' ${producao ? "" : "'unsafe-eval'"} ${VLIBRAS}`,
   `style-src 'self' 'unsafe-inline' ${VLIBRAS}`,
-  `img-src 'self' data: blob: https://images.unsplash.com ${VLIBRAS}`,
+  `img-src 'self' data: blob: https://images.unsplash.com ${supabase?.origin ?? ""} ${VLIBRAS}`,
   `font-src 'self' data: ${VLIBRAS}`,
-  `connect-src 'self' https://viacep.com.br ${VLIBRAS} ${producao ? "" : "ws: wss:"}`,
+  `connect-src 'self' https://viacep.com.br ${supabase?.origin ?? ""} ${VLIBRAS} ${producao ? "" : "ws: wss:"}`,
   `media-src 'self' blob: ${VLIBRAS}`,
   "worker-src 'self' blob:",
   "object-src 'none'",
@@ -94,9 +111,14 @@ const nextConfig: NextConfig = {
     ];
   },
   images: {
+    // a chave de cada foto nunca muda de conteúdo: guarda a versão otimizada por 30 dias e economiza
+    // o tráfego do Supabase (5 GB por mês no plano gratuito)
+    minimumCacheTTL: 30 * 24 * 60 * 60,
     remotePatterns: [
-      // fotos temporárias de demonstração (Unsplash); sai quando as fotos vierem do S3/CDN
+      // fotos de demonstração da semente (Unsplash)
       { protocol: "https", hostname: "images.unsplash.com" },
+      // fotos publicadas dos anúncios: só o bucket público, no projeto do Supabase
+      ...(supabase ? [{ protocol: "https" as const, hostname: supabase.hostname, pathname: "/storage/v1/object/public/anuncios-fotos/**" }] : []),
     ],
   },
 };

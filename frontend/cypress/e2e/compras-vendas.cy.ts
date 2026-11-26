@@ -20,7 +20,7 @@ function entrar(conta: Conta) {
   cy.visit("/entrar");
   cy.findCampo("e-mail").type(conta.email);
   cy.findCampo("senha").type(SENHA);
-  cy.contains("button[type=submit]", /^entrar$/).click();
+  cy.contains("button[type=submit]", /^entrar na minha conta$/).click();
   cy.location("pathname").should("eq", "/conta");
 }
 
