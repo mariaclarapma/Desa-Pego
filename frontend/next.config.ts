@@ -111,8 +111,12 @@ const nextConfig: NextConfig = {
     ];
   },
   images: {
-    // a chave de cada foto nunca muda de conteúdo: guarda a versão otimizada por 30 dias e economiza
-    // o tráfego do Supabase (5 GB por mês no plano gratuito)
+    // o navegador busca cada foto direto da origem (CDN do Unsplash ou armazenamento das fotos), sem
+    // passar pelo otimizador do Next no servidor, que no Render grátis levava segundos por foto
+    // (ver src/lib/carregarImagem.ts)
+    loader: "custom",
+    loaderFile: "./src/lib/carregarImagem.ts",
+    // sem efeito com o carregador próprio; ficam para o caso de voltar ao otimizador do Next
     minimumCacheTTL: 30 * 24 * 60 * 60,
     remotePatterns: [
       // fotos de demonstração da semente (Unsplash)
