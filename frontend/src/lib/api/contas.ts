@@ -103,13 +103,25 @@ export const entrar = (email: string, senha: string) => chamar("entrar", () => p
 export const cadastrar = (nome: string, email: string, cpf: string, senha: string) =>
   chamar("cadastro", () => postar<Sessao>("/auth/cadastro", { nome, email, cpf: cpf.replace(/\D/g, ""), senha }));
 
-/** Recupera a sessão pelo cookie httpOnly (ao abrir a página ou quando o JWT vence). */
-export const renovarSessao = () =>
-  chamar("sessao", async () => {
+/** Renovação em andamento, compartilhada por todas as chamadas que pedirem uma ao mesmo tempo. */
+let renovacaoEmAndamento: Promise<Sessao> | null = null;
+
+/**
+ * Recupera a sessão pelo cookie httpOnly (ao abrir a página ou quando o JWT vence).
+ * Chamadas simultâneas esperam a mesma resposta: cada refresh token vale uma vez só, e um
+ * segundo POST /auth/refresh com o mesmo cookie seria lido pelo backend como roubo,
+ * derrubando todas as sessões da conta.
+ */
+export function renovarSessao(): Promise<Sessao> {
+  renovacaoEmAndamento ??= chamar("sessao", async () => {
     const sessao = await postar<Sessao | null>("/auth/refresh");
     if (!sessao?.usuario) throw new ContaErro("sua sessão expirou.", 401);
     return sessao;
+  }).finally(() => {
+    renovacaoEmAndamento = null;
   });
+  return renovacaoEmAndamento;
+}
 
 export const sair = () => chamar("sessao", () => postar<null>("/auth/logout"));
 
