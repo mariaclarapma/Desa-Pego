@@ -4,6 +4,7 @@ import Image from "next/image";
 import { useId, useState, type ChangeEvent } from "react";
 import { IconAlerta, IconCamera, IconClose } from "@/components/ui/icons";
 import { anuncios, subirFoto, TIPOS_FOTO, type TipoFoto } from "@/lib/api/anuncios";
+import { comprimirFoto } from "@/lib/comprimirFoto";
 import type { ChamadaAutenticada } from "@/lib/useChamadaAutenticada";
 import { FOTO_MAX_MB, FOTOS_MAX } from "@/lib/validacao-anuncio";
 
@@ -20,6 +21,8 @@ const tipoAceito = (tipo: string): tipo is TipoFoto => (TIPOS_FOTO as readonly s
 /**
  * Fotos do anúncio (Req. 004): de 1 a 5, só JPG, PNG ou WebP, com limite de tamanho. Cada foto sobe
  * direto para o armazenamento por uma URL pré-assinada assim que é escolhida. A primeira é a capa.
+ * Antes do envio, cada foto é comprimida no navegador (ver comprimirFoto): o limite de tamanho vale
+ * para a foto já comprimida, então uma foto grande de celular também passa.
  */
 export function FotosAnuncio({
   fotos,
@@ -34,17 +37,20 @@ export function FotosAnuncio({
 }) {
   const idInput = useId();
   const [avisos, setAvisos] = useState<string[]>([]);
+  const [otimizando, setOtimizando] = useState(false);
   const restantes = FOTOS_MAX - fotos.length;
 
   async function escolher(e: ChangeEvent<HTMLInputElement>) {
     const arquivos = Array.from(e.target.files ?? []);
     e.target.value = "";
     const novosAvisos: string[] = [];
-    const aceitos = arquivos.filter((a) => {
-      if (!tipoAceito(a.type)) return novosAvisos.push(`“${a.name}” não é JPG, PNG ou WebP.`) && false;
-      if (a.size > FOTO_MAX_MB * 1024 * 1024) return novosAvisos.push(`“${a.name}” passa de ${FOTO_MAX_MB} MB.`) && false;
-      return true;
-    });
+    const doTipo = arquivos.filter((a) => tipoAceito(a.type) || (novosAvisos.push(`“${a.name}” não é JPG, PNG ou WebP.`) && false));
+    setOtimizando(doTipo.length > 0);
+    const comprimidos = await Promise.all(doTipo.map((a) => comprimirFoto(a)));
+    setOtimizando(false);
+    const aceitos = comprimidos.filter(
+      (a, i) => a.size <= FOTO_MAX_MB * 1024 * 1024 || (novosAvisos.push(`“${doTipo[i].name}” passa de ${FOTO_MAX_MB} MB.`) && false),
+    );
     if (aceitos.length > restantes) {
       novosAvisos.push(`o anúncio aceita até ${FOTOS_MAX} fotos; ${aceitos.length - restantes} ficaram de fora.`);
       aceitos.splice(restantes);
@@ -126,6 +132,9 @@ export function FotosAnuncio({
       </ul>
       <p id={`${idInput}-dica`} className="mt-2 text-sm text-roxo-soft">
         de 1 a {FOTOS_MAX} fotos em JPG, PNG ou WebP, com até {FOTO_MAX_MB} MB cada. a primeira é a capa.
+      </p>
+      <p aria-live="polite" className="text-sm font-medium text-violeta">
+        {otimizando ? "deixando as fotos mais leves…" : ""}
       </p>
       {avisosVisiveis.length > 0 ? (
         <ul role="alert" className="mt-2 space-y-1 text-sm font-medium text-magenta">
